@@ -1,0 +1,23 @@
+# ccstats — self-hosted Claude Code usage stats (badge firmware + server)
+# Copyright (C) 2026 Zapador <zapador@zapador.net>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See the LICENSE file for the full text.
+#
+# This program is distributed WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+[Unit]
+Description=Claude Code durable HUMAN BOTTLENECK time accumulator
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/claude-stats/bottleneck-monitor.py
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,41 @@
+{
+  "pricing_date": "2026-06-14",
+  "models": {
+    "claude-fable-5": {
+      "input": 10.00,
+      "output": 50.00,
+      "cache_read": 1.00,
+      "cache_create": 12.50
+    },
+    "claude-opus-4-8": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_read": 0.50,
+      "cache_create": 6.25
+    },
+    "claude-opus-4-7": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_read": 0.50,
+      "cache_create": 6.25
+    },
+    "claude-opus-4-6": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_read": 0.50,
+      "cache_create": 6.25
+    },
+    "claude-sonnet-4-6": {
+      "input": 3.00,
+      "output": 15.00,
+      "cache_read": 0.30,
+      "cache_create": 3.75
+    },
+    "claude-haiku-4-5-20251001": {
+      "input": 1.00,
+      "output": 5.00,
+      "cache_read": 0.10,
+      "cache_create": 1.25
+    }
+  }
+}

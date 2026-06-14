@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<!--
+  ccstats — self-hosted Claude Code usage stats (badge firmware + server)
+  Copyright (C) 2026 Zapador <zapador@zapador.net>
+
+  This program is free software; you can redistribute it and/or modify it under
+  the terms of version 2 of the GNU General Public License as published by the
+  Free Software Foundation. See the LICENSE file for the full text.
+
+  This program is distributed WITHOUT ANY WARRANTY; without even the implied
+  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+-->
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Claude Usage Monitor · Tufty 2350 · /viewscreens (canvas)</title>
+<style>
+  /* built-in pixel fonts (bundled under fonts/builtin/). Absolute paths (like FONT_BASE) — nginx serves
+     the page at the bare /viewscreens path, so a relative url() would resolve against / and 404. */
+  @font-face{ font-family:'Press Start 2P'; font-style:normal; font-weight:400; font-display:block;
+    src:url('/viewscreens/fonts/builtin/pressstart2p-400.woff2') format('woff2'); }
+  @font-face{ font-family:'Silkscreen'; font-style:normal; font-weight:700; font-display:block;
+    src:url('/viewscreens/fonts/builtin/silkscreen-700.woff2') format('woff2'); }
+  @font-face{ font-family:'Silkscreen'; font-style:normal; font-weight:400; font-display:block;
+    src:url('/viewscreens/fonts/builtin/silkscreen-400.woff2') format('woff2'); }
+  html,body{ margin:0; background:#16161a;
+    background-image:radial-gradient(circle at 50% 38%, #26262d 0%, #16161a 60%, #0e0e11 100%); }
+  body{ display:flex; flex-direction:column; align-items:center; gap:14px; padding:28px 0 60px;
+    font-family:'Silkscreen',monospace; min-height:100vh; box-sizing:border-box; }
+  /* TRUE native: 1 canvas px = 1 CSS px (320×240, 100%). Enlarge with browser zoom, not CSS. */
+  .scr{ width:320px; height:240px; image-rendering:pixelated; image-rendering:crisp-edges;
+    background:#000; box-shadow:0 0 0 1px #000, 0 10px 26px rgba(0,0,0,.5); display:block; }
+  /* oversized dev screens (e.g. FONT TEST) — 1 canvas px = 1 CSS px, size set inline from the registry */
+  .scrbig{ image-rendering:pixelated; image-rendering:crisp-edges; background:#000;
+    box-shadow:0 0 0 1px #000, 0 10px 26px rgba(0,0,0,.5); display:block; }
+  .lbl{ color:#9a9aab; font-size:12px; letter-spacing:2px; text-align:center; }
+  .cap{ color:#6c6c7a; font-size:12px; letter-spacing:1px; text-align:center; max-width:660px; }
+  #banner{ color:#ffb37a; font-size:12px; }
+  /* category = a row (left/right nav); categories stack (up/down nav) — mirrors the device nav model */
+  .cat{ display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+  .cathdr{ color:#ff8a3c; font-size:13px; letter-spacing:3px; font-weight:bold; border-bottom:1px solid #3a3a44;
+    padding:0 0 4px; width:100%; box-sizing:border-box; }
+  .catrow{ display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+
+  /* ---- Tweaks panel (dev-side type-scale editor; persists per-browser, live preview) ---- */
+  /* zoom:0.5 → the panel + button render at half resolution, so when the page is viewed at 200% browser
+     zoom (to inspect the canvas screens) the tweak UI is back at ~100% and takes far less space. Offsets are
+     doubled so the half-scaled elements still sit 16px from the corner. */
+  #tweakBtn, #themeBtn, #paletteBtn{ position:fixed; bottom:32px; z-index:30; width:42px; height:42px; border-radius:50%;
+    border:1px solid #4a4a55; background:#23232a; color:#ff8a3c; font-size:20px; cursor:pointer; zoom:0.5;
+    box-shadow:0 4px 14px rgba(0,0,0,.5); }
+  #tweakBtn{ right:32px; }  #themeBtn{ right:120px; }  #paletteBtn{ right:208px; }
+  #tweak, #themePanel, #palettePanel{ position:fixed; right:32px; bottom:132px; z-index:30; width:330px; max-height:150vh; overflow:auto; zoom:0.5;
+    background:#1c1c22; border:1px solid #3a3a44; border-radius:10px; padding:14px 16px; display:none;
+    color:#cfcfda; font-family:'Silkscreen',monospace; font-size:12px; box-shadow:0 10px 30px rgba(0,0,0,.6); }
+  #tweak.open, #themePanel.open, #palettePanel.open{ display:block; }
+  #tweak h3, #themePanel h3, #palettePanel h3{ margin:0 0 4px; color:#ff8a3c; font-size:13px; letter-spacing:2px; }
+  #tweak .hint, #themePanel .hint, #palettePanel .hint{ color:#76767f; font-size:11px; margin:0 0 12px; line-height:1.4; }
+  .trow{ display:grid; grid-template-columns:62px 1fr 50px; gap:7px; align-items:center; margin-bottom:9px; }
+  .trow > label{ color:#ffb37a; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  .trow select, .trow input{ background:#26262e; color:#e2e2ea; border:1px solid #44444f; border-radius:5px;
+    padding:4px 5px; font-family:inherit; font-size:11px; box-sizing:border-box; width:100%; }
+  .trow .nat{ grid-column:2 / 4; color:#6f6f78; font-size:10px; margin-top:-4px; }
+  #tweak .acts, #themePanel .acts, #palettePanel .acts{ display:flex; gap:8px; margin-top:6px; }
+  #tweak button.act, #themePanel button.act, #palettePanel button.act{ flex:1; background:#2c2c34; color:#cfcfda; border:1px solid #44444f; border-radius:6px;
+    padding:7px; font-family:inherit; font-size:11px; cursor:pointer; }
+  #tweak button.act:hover, #themePanel button.act:hover, #palettePanel button.act:hover{ background:#36363f; }
+  /* palettes panel: colour pickers + preset list with swatch previews */
+  .pal-edit{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .pal-edit > span{ flex:1; color:#ffb37a; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  .pal-edit input[type=color]{ width:44px; height:22px; border:1px solid #44444f; border-radius:4px; background:none; padding:0; cursor:pointer; }
+  .pal-row{ display:flex; align-items:center; gap:8px; margin-bottom:4px; cursor:pointer; padding:3px 5px; border-radius:5px; }
+  .pal-row:hover{ background:#26262e; }
+  .pal-name{ flex:1; color:#cfcfda; font-size:11px; letter-spacing:1px; white-space:nowrap; }
+  .pal-sw{ display:flex; gap:2px; flex:0 0 auto; }
+  .pal-sw i{ width:15px; height:15px; border:1px solid rgba(0,0,0,.4); border-radius:2px; }
+  /* theme-panel segmented controls */
+  .tw-sect{ color:#ff8a3c; font-size:11px; letter-spacing:2px; margin:12px 0 6px; }
+  .tw-row{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .tw-row > span{ flex:0 0 84px; color:#ffb37a; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+  .tw-seg{ display:flex; gap:4px; flex:1; }
+  .tw-seg button{ flex:1; background:#26262e; color:#cfcfda; border:1px solid #44444f; border-radius:5px;
+    padding:5px 4px; font-family:inherit; font-size:11px; cursor:pointer; }
+  .tw-seg button.on{ background:#ff6422; color:#1c1c22; border-color:#ff6422; }
+</style>
+<script src="/viewscreens/pico.js"></script>
+<script src="/viewscreens/screens.js"></script>
+</head>
+<body>
+  <div id="banner"></div>
+  <div class="cap">/viewscreens · CANVAS PORT (PicoGraphics-style) · native <b>320×240</b> (100%) · use browser zoom to enlarge</div>
+  <div id="rack" style="display:flex;flex-direction:column;align-items:flex-start;gap:26px;padding:0 24px;box-sizing:border-box;"></div>
+
+  <button id="tweakBtn" title="Type-scale tweaks">⚙</button>
+  <div id="tweak">
+    <h3>TYPE SCALE</h3>
+    <p class="hint">Map each named size to a font + px. Live preview; saved in this browser only. Library fonts
+      are crispest at their native px or an integer multiple (×2, ×3).</p>
+    <div id="tweakRows"></div>
+    <div class="acts"><button class="act" id="tweakReset">Reset to defaults</button></div>
+  </div>
+
+  <button id="themeBtn" title="Theme tweaks">◑</button>
+  <div id="themePanel">
+    <h3>THEME</h3>
+    <p class="hint">Data + avatar info lines. Live preview; saved in this browser only. (Colours are a separate Palettes panel.)</p>
+    <div id="themeRows"></div>
+    <div class="acts"><button class="act" id="themeReset">Reset to defaults</button></div>
+  </div>
+
+  <button id="paletteBtn" title="Palettes">🎨</button>
+  <div id="palettePanel">
+    <h3>PALETTES</h3>
+    <p class="hint">Edit the base colours (incl. the avatar), or click a preset to apply it. ~20 shades are derived from these. Saved in this browser only.</p>
+    <div id="paletteRows"></div>
+    <div class="acts"><button class="act" id="paletteReset">Reset to defaults</button></div>
+  </div>
+
+  <script>
+    const FONT_BASE='/viewscreens/fonts/';
+    // Load every library font from fonts.json: inject an @font-face and register it in pico's FONTS (keyed by slug).
+    async function loadLibraryFonts(){
+      let cat=null;
+      try{
+        const r=await fetch(FONT_BASE+'fonts.json',{cache:'no-store'}); if(!r.ok) throw 0; cat=await r.json();
+        let css='';
+        cat.fonts.forEach(f=>{
+          const file=f.files[0]; if(!file) return;
+          const url=FONT_BASE+f.slug+'/'+encodeURIComponent(file.woff2);
+          css+="@font-face{font-family:'"+file.family+"';font-style:normal;font-weight:400;font-display:block;src:url('"+url+"') format('woff2');}\n";
+          if(window.registerFont) registerFont(f.slug, file.family, '400');
+        });
+        const st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
+        window.FONT_CATALOG=cat;
+        await Promise.all(cat.fonts.map(f=> f.files[0] ? document.fonts.load("16px '"+f.files[0].family+"'").catch(()=>{}) : null));
+      }catch(e){ console.warn('library fonts unavailable:', e); }
+      return cat;
+    }
+
+    // Build the Tweaks panel from the catalog + the type-scale API exposed by screens.js.
+    function buildTweaks(cat){
+      const rows=document.getElementById('tweakRows'); if(!rows) return;
+      // monospaced? measure the actual loaded font — every glyph advance equal ⇒ mono. (FONTS is pico.js's
+      // global registry: slug/built-in key → {family}.) Self-maintaining: matches what's really rendered.
+      const _mc=document.createElement('canvas').getContext('2d');
+      const isMono=key=>{ const f=(typeof FONTS!=='undefined')&&FONTS[key]; if(!f) return false;
+        _mc.font="32px "+f.family; const w=ch=>_mc.measureText(ch).width, a=w('i');
+        return ['W','.','m','l'].every(ch=>Math.abs(w(ch)-a)<0.1); };
+      // font options (built-ins + library), sorted by native px then name → "Name [(MS)] (Npx)"
+      const items=[ {v:'pico',name:'Press Start 2P',px:8}, {v:'silk',name:'Silkscreen',px:8} ];
+      (cat&&cat.fonts||[]).forEach(f=> items.push({v:f.slug, name:f.name, px:f.nativePx}));
+      items.sort((a,b)=> a.px-b.px || (a.name<b.name?-1:a.name>b.name?1:0));
+      const opts=items.map(i=>[i.v, i.name+(isMono(i.v)?' (MS)':'')+' ('+i.px+')']);
+      const nativeOf={pico:8, silk:8}; (cat&&cat.fonts||[]).forEach(f=> nativeOf[f.slug]=f.nativePx);
+      // preset dropdown (own row above the per-role rows) — applying a preset writes every role at once;
+      // selection is DERIVED from the current scale, so any hand-edited role flips it back to "custom".
+      const prow=document.createElement('div'); prow.className='trow';
+      const plab=document.createElement('label'); plab.textContent='preset'; prow.appendChild(plab);
+      const psel=document.createElement('select');
+      const pcust=document.createElement('option'); pcust.value=''; pcust.textContent='— custom —'; pcust.disabled=true;
+      psel.appendChild(pcust);
+      Object.keys(FONT_PRESETS).forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; psel.appendChild(o); });
+      psel.value=currentFontPreset();
+      psel.addEventListener('change', ()=>{ applyFontPreset(psel.value); viewscreensRerender();
+        rows.innerHTML=''; buildTweaks(cat); });   // rebuild so every per-role row shows the preset's values
+      prow.appendChild(psel); rows.appendChild(prow);
+      const syncPreset=()=>{ psel.value=currentFontPreset(); };
+      const scale=getScale();
+      SCALE_SIZES.forEach(name=>{
+        const cur=scale[name]||{};
+        const row=document.createElement('div'); row.className='trow';
+        const lab=document.createElement('label'); lab.textContent=name; row.appendChild(lab);
+        const sel=document.createElement('select');
+        opts.forEach(([v,t])=>{ const o=document.createElement('option'); o.value=v; o.textContent=t;
+          if(v===cur.font) o.selected=true; sel.appendChild(o); });
+        row.appendChild(sel);
+        const px=document.createElement('input'); px.type='number';
+        // step in native-px increments so the spinner jumps native, 2×, 3× … (e.g. 8,16,24,32)
+        const setStep=slug=>{ const n=nativeOf[slug]||8; px.min=n; px.step=n; px.max=n*8; };
+        setStep(cur.font); px.value=cur.px||nativeOf[cur.font]||8;
+        row.appendChild(px);
+        const nat=document.createElement('div'); nat.className='nat';
+        const showNat=()=>{ const n=nativeOf[sel.value]||8, mm=n<=8?4:n<=10?3:2, cr=[];
+          for(let m=1;m<=mm;m++) cr.push(n*m); nat.textContent='native '+n+'px · crisp: '+cr.join(', '); };
+        showNat(); row.appendChild(nat);
+        const apply=()=>{ setScaleSize(name, sel.value, +px.value); showNat(); viewscreensRerender(); syncPreset(); };
+        // picking a font defaults its size to that font's native; manual edits/stepper still free
+        sel.addEventListener('change', ()=>{ setStep(sel.value); px.value=nativeOf[sel.value]||8; apply(); });
+        px.addEventListener('input', apply);
+        rows.appendChild(row);
+      });
+      document.getElementById('tweakReset').addEventListener('click', ()=>{ resetScale(); viewscreensRerender();
+        rows.innerHTML=''; buildTweaks(cat); });
+    }
+
+    // ---- Theme tweaks panel: data (token mode) + avatar info lines. Reads/writes the viewscreens opts state. ----
+    function buildTheme(){
+      const rows=document.getElementById('themeRows'); if(!rows) return; rows.innerHTML='';
+      const opts=getOpts();
+      const seg=(sect, label, key, choices)=>{
+        if(sect){ const s=document.createElement('div'); s.className='tw-sect'; s.textContent=sect; rows.appendChild(s); }
+        const row=document.createElement('div'); row.className='tw-row';
+        const lbl=document.createElement('span'); lbl.textContent=label; row.appendChild(lbl);
+        const sg=document.createElement('div'); sg.className='tw-seg';
+        choices.forEach(([v,txt])=>{ const b=document.createElement('button'); b.textContent=txt;
+          if(opts[key]===v) b.classList.add('on');
+          b.addEventListener('click', ()=>{ setOpt(key, v); viewscreensRerender(); buildTheme(); }); sg.appendChild(b); });
+        row.appendChild(sg); rows.appendChild(row);
+      };
+      seg('Data',   'Tokens',      'tokenMode',     [['nocache','No-cache'],['all','All']]);
+      seg('Avatar', 'Today line',  'avatarStats',   [[true,'On'],[false,'Off']]);
+      seg(null,     'Session bar', 'avatarSessBar', [[true,'On'],[false,'Off']]);
+    }
+
+    // ---- Palettes panel: edit the 5 base colours + a preset list that previews each palette's swatches. ----
+    function buildPalettes(){
+      const rows=document.getElementById('paletteRows'); if(!rows) return; rows.innerHTML='';
+      const theme=getTheme(), keys=window.THEME_KEYS, labels=['Background','Accent 1','Accent 2','Text','Status','Avatar'];
+      const sect=t=>{ const s=document.createElement('div'); s.className='tw-sect'; s.textContent=t; rows.appendChild(s); };
+      // 5 base-colour pickers (live)
+      sect('Colours');
+      keys.forEach((k,i)=>{ const row=document.createElement('div'); row.className='pal-edit';
+        const lbl=document.createElement('span'); lbl.textContent=labels[i]; row.appendChild(lbl);
+        const inp=document.createElement('input'); inp.type='color'; inp.value=theme[k]||'#000000';
+        inp.addEventListener('input', ()=>{ const o={}; o[k]=inp.value; setThemeColors(o); viewscreensRerender(); }); row.appendChild(inp);
+        rows.appendChild(row); });
+      // presets, each shown with its 5-swatch strip (like the PALETTES options screen)
+      sect('Presets');
+      (window.PALETTES||[]).forEach(p=>{ const name=p[0], cols=p[1];
+        const row=document.createElement('div'); row.className='pal-row'; row.title='Apply '+name;
+        const nm=document.createElement('span'); nm.className='pal-name'; nm.textContent=name; row.appendChild(nm);
+        const sw=document.createElement('span'); sw.className='pal-sw';
+        cols.forEach(c=>{ const i=document.createElement('i'); i.style.background=c; sw.appendChild(i); }); row.appendChild(sw);
+        row.addEventListener('click', ()=>{ setThemeColors({bg:cols[0],accent1:cols[1],accent2:cols[2],text:cols[3],status:cols[4],avatarColor:cols[5]});
+          viewscreensRerender(); buildPalettes(); });
+        rows.appendChild(row); });
+    }
+
+    (async function(){
+      // built-in pixel fonts first (canvas text needs them ready, not a fallback)
+      try{ await Promise.all([
+        document.fonts.load("11px 'Press Start 2P'"),
+        document.fonts.load("700 11px 'Silkscreen'"),
+        document.fonts.load("400 11px 'Silkscreen'") ]); }catch(e){}
+      const cat=await loadLibraryFonts();
+      try{ await document.fonts.ready; }catch(e){}
+
+      const rack=document.getElementById('rack'), targets=[];
+      // ?only=<slug> renders just that one screen full-size (handy for reviewing big dev screens)
+      const only=new URLSearchParams(location.search).get('only');
+      const order=only ? [SCREENS[only] ? SCREENS[only].cat : null].filter(Boolean) : (window.CATEGORY_ORDER||[]).slice();
+      Object.values(SCREENS).forEach(s=>{ if(!only && order.indexOf(s.cat)<0) order.push(s.cat); });
+      order.forEach(cat=>{
+        let slugs=Object.keys(SCREENS).filter(s=>SCREENS[s].cat===cat);
+        if(only) slugs=slugs.filter(s=>s===only);
+        if(!slugs.length) return;
+        const grp=document.createElement('div'); grp.className='cat';
+        const ch=document.createElement('div'); ch.className='cathdr'; ch.textContent=cat; grp.appendChild(ch);
+        const row=document.createElement('div'); row.className='catrow';
+        slugs.forEach(slug=>{
+          const wrap=document.createElement('div'); wrap.style.cssText='display:flex;flex-direction:column;gap:8px;align-items:center';
+          const lbl=document.createElement('div'); lbl.className='lbl'; lbl.textContent=SCREENS[slug].title;
+          const sw=SCREENS[slug].w||320, sh=SCREENS[slug].h||240, big=(sw!==320||sh!==240);
+          const cv=document.createElement('canvas'); cv.width=sw; cv.height=sh;
+          cv.className = big?'scrbig':'scr'; if(big){ cv.style.width=sw+'px'; cv.style.height=sh+'px'; }
+          wrap.appendChild(lbl); wrap.appendChild(cv); row.appendChild(wrap);
+          targets.push({canvas:cv, slug});
+        });
+        grp.appendChild(row); rack.appendChild(grp);
+      });
+      await boot(targets);
+
+      // FONT TEST screen has an on-canvas TOGGLE GRID control — route clicks to its hit-test
+      targets.forEach(t=>{ if(t.slug==='fonttest' && window.fonttestHit){
+        t.canvas.style.cursor='pointer';
+        t.canvas.addEventListener('click', ev=>{
+          const r=t.canvas.getBoundingClientRect();
+          const x=(ev.clientX-r.left)*(t.canvas.width/r.width), y=(ev.clientY-r.top)*(t.canvas.height/r.height);
+          if(window.fonttestHit(x,y)) viewscreensRerender();
+        });
+      }});
+
+      buildTweaks(cat); buildTheme(); buildPalettes();
+      const panels={ tweak:document.getElementById('tweak'), theme:document.getElementById('themePanel'), pal:document.getElementById('palettePanel') };
+      // three independent panels; opening one closes the others (they share the bottom-right slot)
+      const openOnly=(k)=>{ Object.keys(panels).forEach(n=>{ if(n!==k) panels[n].classList.remove('open'); }); panels[k].classList.toggle('open'); };
+      document.getElementById('tweakBtn').addEventListener('click', ()=>openOnly('tweak'));
+      document.getElementById('themeBtn').addEventListener('click', ()=>openOnly('theme'));
+      document.getElementById('paletteBtn').addEventListener('click', ()=>openOnly('pal'));
+      document.getElementById('themeReset').addEventListener('click', ()=>{ resetOpts(); viewscreensRerender(); buildTheme(); });
+      document.getElementById('paletteReset').addEventListener('click', ()=>{ resetTheme(); viewscreensRerender(); buildPalettes(); });
+      if(/[?&]tweaks=1/.test(location.search)) panels.tweak.classList.add('open');                                // auto-open for previews
+      if(/[?&]theme=1/.test(location.search)) panels.theme.classList.add('open');
+      if(/[?&]palettes=1/.test(location.search)) panels.pal.classList.add('open');
+    })();
+  </script>
+</body>
+</html>

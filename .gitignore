@@ -1,0 +1,50 @@
+# Device/local secrets — never committed
+secrets.py
+firmware/secrets.py
+.leakscan-local
+
+# Internal/dev-only docs — NEVER in the public repo (kept on disk, untracked).
+# CLAUDE.md + TODO.md stay local for day-to-day work; HANDOFF.md + SERVER-PROMPT-M4B.md are stale
+# and deleted. Public users rely on README.md (which they/Claude read) instead of a tracked CLAUDE.md.
+# All purged from git history at the Phase 5 scrub.
+CLAUDE.md
+TODO.md
+HANDOFF.md
+SERVER-PROMPT-M4B.md
+GOING-PUBLIC.md
+
+# Local artifacts
+__pycache__/
+*.pyc
+*.uf2
+.DS_Store
+
+# ── Server-side: per-machine config, secrets, generated data ──
+# The pipeline runs from /opt/claude-stats and /var/www/stats (outside the repo); these guards
+# catch anything sensitive accidentally landing in the working tree when running from a clone.
+# NOTE: exact names / scoped globs only — must NOT match committed templates
+# (firmware/secrets.example.py, server/config.example.json, *.template).
+config.json
+token.txt
+peer-token.txt
+*token*
+*.pat
+.env
+.git-credentials
+*.git-credentials
+*credentials*
+# generated runtime data + DBs
+*.db
+*.db.bak
+*.bak
+*.bak-*
+claude-stats.json
+live-status.json
+claude-limits.json
+competitor.json
+competition.json
+peers/
+backups/
+# rendered-from-template configs (the *.template files stay tracked; *.conf / *.service don't)
+server/nginx/*.conf
+*.service

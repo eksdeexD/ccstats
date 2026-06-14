@@ -1,0 +1,25 @@
+{
+  "_comment": "Copy to /opt/claude-stats/config.json (NEVER commit it). Per-machine settings + secrets.",
+
+  "timezone": "UTC",
+  "_timezone": "IANA name, e.g. 'America/New_York' or 'UTC'. All hour/day bucketing uses this.",
+
+  "server": "main",
+  "_server": "Short label for THIS machine, shown in the JSON and used by deploy.sh.",
+
+  "project_granularity": "user",
+  "_project_granularity": "How sessions are grouped into projects[]. 'user' (default): one project per Linux user (named after the account, or ~/projectname.txt) — the historical behaviour. 'directory': one project per Claude Code working directory, named from each transcript's cwd — use this if you run several projects under ONE user account. Override per-run with --project-granularity. Full guide: docs/projects-layout.md.",
+
+  "live_monitor": {},
+  "_live_monitor": "OPTIONAL per-machine tuning for the working/idle activity monitor. Leave {} to use the defaults, which are hardware-INDEPENDENT (detection is network + transcript based, so the same values work across machines). Override a key only if a box misbehaves. State signals: net_bytes_per_s (remote-socket bytes/s that counts as active, default 300; idle is ~0 so this rarely needs changing) and turn_signal (default true: hold 'working' while the transcript shows the model owes a response, covering long silent API latency) capped by turn_cap_s (default 300). Diagnostic-only (measured, not in the decision): io_bytes_per_s (default 256), transcript_signal (default true). Timing: idle_debounce_s (default 8), active_debounce_s (default 2), sample_interval_s (default 2).",
+
+  "alias": "anon",
+  "_alias": "Your PUBLIC competitor name (e.g. 'Maverick'). This is the ONLY identity that leaves the box — never your username/email/projects. Shown on your friend's leaderboard.",
+
+  "peers": [],
+  "_peers": "Friends to pull head-to-head stats FROM. Each: {\"url\": \"https://their-domain/competitor.json\", \"token\": \"<the PEER token THEY issued you>\", \"name\": \"optional-label\"}. Leave [] until a friend is live. For a fair race both sides should run the same timezone.",
+
+  "_peers_example": [
+    { "url": "https://their-domain.example/competitor.json", "token": "PASTE_THE_PEER_TOKEN_THEY_GAVE_YOU", "name": "rival" }
+  ]
+}

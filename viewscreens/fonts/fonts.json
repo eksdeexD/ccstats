@@ -1,0 +1,523 @@
+{
+  "fonts": [
+    {
+      "slug": "3x5_mt_pixel",
+      "name": "3x5 MT Pixel",
+      "nativePx": 5,
+      "dafont": "https://www.dafont.com/3x5-mt-pixel.font",
+      "files": [
+        {
+          "src": "3x5 MT Pixel.ttf",
+          "woff2": "3x5 MT Pixel.woff2",
+          "family": "3x5 MT Pixel",
+          "style": "regular",
+          "fullName": "3x5 MT Pixel"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "5x5_mt_pixel",
+      "name": "5x5 MT Pixel",
+      "nativePx": 5,
+      "dafont": "https://www.dafont.com/5x5-mt-pixel.font",
+      "files": [
+        {
+          "src": "5x5 MT Pixel.ttf",
+          "woff2": "5x5 MT Pixel.woff2",
+          "family": "5x5 MT Pixel",
+          "style": "regular",
+          "fullName": "5x5 MT Pixel"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "5x7_mt_pixel",
+      "name": "5x7 MT Pixel",
+      "nativePx": 7,
+      "dafont": "https://www.dafont.com/5x7-mt-pixel.font",
+      "files": [
+        {
+          "src": "5x7 MT Pixel.ttf",
+          "woff2": "5x7 MT Pixel.woff2",
+          "family": "5x7 MT Pixel",
+          "style": "regular",
+          "fullName": "5x7 MT Pixel"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "7_squared",
+      "name": "7 Squared",
+      "nativePx": 9,
+      "dafont": "https://www.dafont.com/7-squared.font",
+      "files": [
+        {
+          "src": "7 Squared.ttf",
+          "woff2": "7 Squared.woff2",
+          "family": "7 Squared",
+          "style": "Regular",
+          "fullName": "7 Squared Regular"
+        }
+      ],
+      "docs": [
+        "readme.txt",
+        "license.txt"
+      ]
+    },
+    {
+      "slug": "thaleahfat",
+      "name": "Thaleah Fat",
+      "nativePx": 16,
+      "dafont": "https://www.dafont.com/thaleahfat.font",
+      "files": [
+        {
+          "src": "ThaleahFat.ttf",
+          "woff2": "ThaleahFat.woff2",
+          "family": "ThaleahFat",
+          "style": "Medium",
+          "fullName": "ThaleahFat"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "aurora_24",
+      "name": "Aurora 24",
+      "nativePx": 9,
+      "dafont": "https://www.dafont.com/aurora-24.font",
+      "files": [
+        {
+          "src": "aurora-24.ttf",
+          "woff2": "aurora-24.woff2",
+          "family": "Aurora 24",
+          "style": "Regular",
+          "fullName": "Aurora 24 Regular"
+        }
+      ],
+      "docs": [
+        "readme.txt",
+        "license.txt"
+      ]
+    },
+    {
+      "slug": "retro_gaming",
+      "name": "Retro Gaming",
+      "nativePx": 11,
+      "dafont": "https://www.dafont.com/retro-gaming.font",
+      "files": [
+        {
+          "src": "Retro Gaming.ttf",
+          "woff2": "Retro Gaming.woff2",
+          "family": "Retro Gaming",
+          "style": "Regular",
+          "fullName": "Retro Gaming"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "deer_diary",
+      "name": "Deer Diary",
+      "nativePx": 11,
+      "dafont": "https://www.dafont.com/deer-diary.font",
+      "files": [
+        {
+          "src": "deer-diary.ttf",
+          "woff2": "deer-diary.woff2",
+          "family": "Deer Diary",
+          "style": "Regular",
+          "fullName": "Deer Diary Regular"
+        }
+      ],
+      "docs": [
+        "readme.txt",
+        "license.txt"
+      ]
+    },
+    {
+      "slug": "org_v01",
+      "name": "Org v01",
+      "nativePx": 8,
+      "dafont": "https://www.dafont.com/org-v01.font",
+      "files": [
+        {
+          "src": "org_01.ttf",
+          "woff2": "org_01.woff2",
+          "family": "Org_v01",
+          "style": "Regular",
+          "fullName": "Org_v01"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "virtual_dj",
+      "name": "Virtual DJ",
+      "nativePx": 8,
+      "dafont": "https://www.dafont.com/virtual-dj.font",
+      "files": [
+        {
+          "src": "Vdj.ttf",
+          "woff2": "Vdj.woff2",
+          "family": "Virtual DJ",
+          "style": "Regular",
+          "fullName": "Virtual DJ"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "free_pixel",
+      "name": "Free Pixel",
+      "nativePx": 16,
+      "dafont": "https://www.dafont.com/free-pixel.font",
+      "files": [
+        {
+          "src": "FreePixel.ttf",
+          "woff2": "FreePixel.woff2",
+          "family": "Free Pixel",
+          "style": "Regular",
+          "fullName": "Free Pixel Regular"
+        }
+      ],
+      "docs": []
+    },
+    {
+      "slug": "hachicro",
+      "name": "Hachicro",
+      "nativePx": 8,
+      "dafont": "https://www.dafont.com/hachicro.font",
+      "files": [
+        {
+          "src": "hachicro.TTF",
+          "woff2": "hachicro.woff2",
+          "family": "Hachicro",
+          "style": "Regular",
+          "fullName": "Hachicro"
+        }
+      ],
+      "docs": [
+        "readme.txt"
+      ]
+    },
+    {
+      "slug": "visitor_tt1",
+      "name": "Visitor TT1",
+      "nativePx": 10,
+      "dafont": "https://www.dafont.com/visitor.font",
+      "files": [
+        {
+          "src": "visitor1.ttf",
+          "woff2": "visitor1.woff2",
+          "family": "Visitor TT1 BRK",
+          "style": "Regular",
+          "fullName": "Visitor TT1 BRK"
+        }
+      ],
+      "docs": [
+        "visitor.txt"
+      ]
+    },
+    {
+      "slug": "visitor_tt2",
+      "name": "Visitor TT2",
+      "nativePx": 10,
+      "dafont": "https://www.dafont.com/visitor.font",
+      "files": [
+        {
+          "src": "visitor2.ttf",
+          "woff2": "visitor2.woff2",
+          "family": "Visitor TT2 BRK",
+          "style": "Regular",
+          "fullName": "Visitor TT2 BRK"
+        }
+      ],
+      "docs": [
+        "visitor.txt"
+      ]
+    }
+  ],
+  "bySize": {
+    "5": [
+      {
+        "slug": "3x5_mt_pixel",
+        "name": "3x5 MT Pixel",
+        "mult": 1
+      },
+      {
+        "slug": "5x5_mt_pixel",
+        "name": "5x5 MT Pixel",
+        "mult": 1
+      }
+    ],
+    "7": [
+      {
+        "slug": "5x7_mt_pixel",
+        "name": "5x7 MT Pixel",
+        "mult": 1
+      }
+    ],
+    "8": [
+      {
+        "slug": "org_v01",
+        "name": "Org v01",
+        "mult": 1
+      },
+      {
+        "slug": "virtual_dj",
+        "name": "Virtual DJ",
+        "mult": 1
+      },
+      {
+        "slug": "hachicro",
+        "name": "Hachicro",
+        "mult": 1
+      }
+    ],
+    "9": [
+      {
+        "slug": "7_squared",
+        "name": "7 Squared",
+        "mult": 1
+      },
+      {
+        "slug": "aurora_24",
+        "name": "Aurora 24",
+        "mult": 1
+      }
+    ],
+    "10": [
+      {
+        "slug": "3x5_mt_pixel",
+        "name": "3x5 MT Pixel",
+        "mult": 2
+      },
+      {
+        "slug": "5x5_mt_pixel",
+        "name": "5x5 MT Pixel",
+        "mult": 2
+      },
+      {
+        "slug": "visitor_tt1",
+        "name": "Visitor TT1",
+        "mult": 1
+      },
+      {
+        "slug": "visitor_tt2",
+        "name": "Visitor TT2",
+        "mult": 1
+      }
+    ],
+    "11": [
+      {
+        "slug": "retro_gaming",
+        "name": "Retro Gaming",
+        "mult": 1
+      },
+      {
+        "slug": "deer_diary",
+        "name": "Deer Diary",
+        "mult": 1
+      }
+    ],
+    "14": [
+      {
+        "slug": "5x7_mt_pixel",
+        "name": "5x7 MT Pixel",
+        "mult": 2
+      }
+    ],
+    "15": [
+      {
+        "slug": "3x5_mt_pixel",
+        "name": "3x5 MT Pixel",
+        "mult": 3
+      },
+      {
+        "slug": "5x5_mt_pixel",
+        "name": "5x5 MT Pixel",
+        "mult": 3
+      }
+    ],
+    "16": [
+      {
+        "slug": "thaleahfat",
+        "name": "Thaleah Fat",
+        "mult": 1
+      },
+      {
+        "slug": "org_v01",
+        "name": "Org v01",
+        "mult": 2
+      },
+      {
+        "slug": "virtual_dj",
+        "name": "Virtual DJ",
+        "mult": 2
+      },
+      {
+        "slug": "free_pixel",
+        "name": "Free Pixel",
+        "mult": 1
+      },
+      {
+        "slug": "hachicro",
+        "name": "Hachicro",
+        "mult": 2
+      }
+    ],
+    "18": [
+      {
+        "slug": "7_squared",
+        "name": "7 Squared",
+        "mult": 2
+      },
+      {
+        "slug": "aurora_24",
+        "name": "Aurora 24",
+        "mult": 2
+      }
+    ],
+    "20": [
+      {
+        "slug": "3x5_mt_pixel",
+        "name": "3x5 MT Pixel",
+        "mult": 4
+      },
+      {
+        "slug": "5x5_mt_pixel",
+        "name": "5x5 MT Pixel",
+        "mult": 4
+      },
+      {
+        "slug": "visitor_tt1",
+        "name": "Visitor TT1",
+        "mult": 2
+      },
+      {
+        "slug": "visitor_tt2",
+        "name": "Visitor TT2",
+        "mult": 2
+      }
+    ],
+    "21": [
+      {
+        "slug": "5x7_mt_pixel",
+        "name": "5x7 MT Pixel",
+        "mult": 3
+      }
+    ],
+    "22": [
+      {
+        "slug": "retro_gaming",
+        "name": "Retro Gaming",
+        "mult": 2
+      },
+      {
+        "slug": "deer_diary",
+        "name": "Deer Diary",
+        "mult": 2
+      }
+    ],
+    "24": [
+      {
+        "slug": "org_v01",
+        "name": "Org v01",
+        "mult": 3
+      },
+      {
+        "slug": "virtual_dj",
+        "name": "Virtual DJ",
+        "mult": 3
+      },
+      {
+        "slug": "hachicro",
+        "name": "Hachicro",
+        "mult": 3
+      }
+    ],
+    "25": [
+      {
+        "slug": "3x5_mt_pixel",
+        "name": "3x5 MT Pixel",
+        "mult": 5
+      },
+      {
+        "slug": "5x5_mt_pixel",
+        "name": "5x5 MT Pixel",
+        "mult": 5
+      }
+    ],
+    "27": [
+      {
+        "slug": "7_squared",
+        "name": "7 Squared",
+        "mult": 3
+      },
+      {
+        "slug": "aurora_24",
+        "name": "Aurora 24",
+        "mult": 3
+      }
+    ],
+    "28": [
+      {
+        "slug": "5x7_mt_pixel",
+        "name": "5x7 MT Pixel",
+        "mult": 4
+      }
+    ],
+    "30": [
+      {
+        "slug": "3x5_mt_pixel",
+        "name": "3x5 MT Pixel",
+        "mult": 6
+      },
+      {
+        "slug": "5x5_mt_pixel",
+        "name": "5x5 MT Pixel",
+        "mult": 6
+      },
+      {
+        "slug": "visitor_tt1",
+        "name": "Visitor TT1",
+        "mult": 3
+      },
+      {
+        "slug": "visitor_tt2",
+        "name": "Visitor TT2",
+        "mult": 3
+      }
+    ],
+    "32": [
+      {
+        "slug": "thaleahfat",
+        "name": "Thaleah Fat",
+        "mult": 2
+      },
+      {
+        "slug": "org_v01",
+        "name": "Org v01",
+        "mult": 4
+      },
+      {
+        "slug": "virtual_dj",
+        "name": "Virtual DJ",
+        "mult": 4
+      },
+      {
+        "slug": "free_pixel",
+        "name": "Free Pixel",
+        "mult": 2
+      },
+      {
+        "slug": "hachicro",
+        "name": "Hachicro",
+        "mult": 4
+      }
+    ]
+  }
+}

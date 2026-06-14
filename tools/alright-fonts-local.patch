@@ -1,0 +1,110 @@
+diff --git a/afinate b/afinate
+index a917310..a3ec373 100755
+--- a/afinate
++++ b/afinate
+@@ -46,6 +46,7 @@ parser.add_argument("--characters", type=str, choices=CODEPOINT_LOOKUP.keys(), h
+ parser.add_argument("--corpus", type=argparse.FileType("r"), help="corpus to select characters from")
+ parser.add_argument("--quiet", action="store_true", help="suppress all progress and debug messages")
+ parser.add_argument("--out", type=str, help="the output filename")
++parser.add_argument("--scale-factor", type=float, default=None, help="force the font-units-per-af-unit scale (pixel-font grid snapping)")
+ args = parser.parse_args()
+ 
+ # override print() to allow quiet mode to suppress output
+@@ -64,7 +65,7 @@ quality_map = {
+ }
+ 
+ try:
+-  encoder = Encoder(args.font, args.icon_font, quality=quality_map[args.quality])
++  encoder = Encoder(args.font, args.icon_font, quality=quality_map[args.quality], scale_factor=args.scale_factor)
+ except OSError:
+   print("Failed to load font - stopping.")
+   sys.exit(1)
+diff --git a/python_alright_fonts/encoder.py b/python_alright_fonts/encoder.py
+index fc464ee..5f196f2 100644
+--- a/python_alright_fonts/encoder.py
++++ b/python_alright_fonts/encoder.py
+@@ -5,7 +5,10 @@ import shapely
+ 
+ DEBUG = True
+ 
+-END_OF_TEXT = 0x01ff
++# local patch: was 0x01ff, which shoved ordinary punctuation like the bullet
++# (U+2022) down the icon-glyph path (per-glyph rescale + recentre -> int8
++# overflow). Icon fonts live in the Private Use Area, so split there.
++END_OF_TEXT = 0xE000
+ 
+ 
+ def load_glyph(face, codepoint, scale_factor, quality=30, precision=2, target_bounds=None, offset=None, include_bounding_box=False):
+@@ -107,6 +110,11 @@ def load_glyph(face, codepoint, scale_factor, quality=30, precision=2, target_bo
+      return None
+ 
+   # SHAPELY
++  # local patch: tiny pixel fonts (e.g. 3x5/5x5 MT Pixel) produce glyphs whose
++  # every contour is degenerate (<4 points); shapely.polygons([]) then crashes
++  # with a dimension error. Treat those glyphs as empty instead.
++  if glyph.contours and not any(len(contour) > 3 for contour in glyph.contours):
++      glyph.contours = []
+   if glyph.contours:
+       polygons = shapely.polygons([shapely.LinearRing(contour) for contour in glyph.contours if len(contour) > 3])
+       polygons = [poly.buffer(0) for poly in polygons]
+@@ -145,18 +153,21 @@ def load_glyph(face, codepoint, scale_factor, quality=30, precision=2, target_bo
+ 
+       polygons = merge_partial_overlaps(polygons)
+ 
+-      valid = shapely.is_valid(polygons)
+-      for i in range(len(polygons)):
+-          if not valid[i]:
+-              polygons[i] = polygons[i].buffer(0)
++      if not polygons:   # local patch: everything degenerated away
++          glyph.contours = []
++      else:
++          valid = shapely.is_valid(polygons)
++          for i in range(len(polygons)):
++              if not valid[i]:
++                  polygons[i] = polygons[i].buffer(0)
+ 
+-      # Resolve the polygons into inner/outer enclosed rings
+-      polygons = shapely.polygons(shapely.get_rings(polygons))
++          # Resolve the polygons into inner/outer enclosed rings
++          polygons = shapely.polygons(shapely.get_rings(polygons))
+ 
+-      polygons = shapely.coverage_simplify(polygons, tolerance=quality // 2)
++          polygons = shapely.coverage_simplify(polygons, tolerance=quality // 2)
+ 
+-      p_scale = Point(scale_factor, -scale_factor)
+-      glyph.contours = [[Point(x, y) / p_scale for x, y in shapely.get_coordinates(poly)] for poly in polygons]
++          p_scale = Point(scale_factor, -scale_factor)
++          glyph.contours = [[Point(x, y) / p_scale for x, y in shapely.get_coordinates(poly)] for poly in polygons]
+ 
+   if codepoint >= END_OF_TEXT:
+     # Get the scaled bounding box
+@@ -214,7 +225,7 @@ def load_glyph(face, codepoint, scale_factor, quality=30, precision=2, target_bo
+   return glyph
+ 
+ class Encoder():
+-  def __init__(self, font, icon_font, quality = 30):
++  def __init__(self, font, icon_font, quality = 30, scale_factor = None):
+     self.face = freetype.Face(font)
+     self.icon_face = None if icon_font is None else freetype.Face(icon_font)
+ 
+@@ -232,7 +243,9 @@ class Encoder():
+       abs(self.bbox_l), abs(self.bbox_t),
+       abs(self.bbox_r), abs(self.bbox_b))
+ 
+-    self.scale_factor = normalising_scale_factor / 127
++    # local patch: allow a caller-supplied scale factor so pixel fonts can be
++    # quantized with an exact integer number of units per design pixel
++    self.scale_factor = scale_factor if scale_factor else normalising_scale_factor / 127
+ 
+     self.bbox_l /= self.scale_factor
+     self.bbox_t /= self.scale_factor
+@@ -280,7 +293,8 @@ class Encoder():
+     result = bytes()
+     for contour in glyph.contours:
+       for point in contour:
+-        result += struct.pack(">bb", int(point.x), int(point.y))
++        # local patch: round, don't truncate — keeps grid-exact coordinates exact
++        result += struct.pack(">bb", round(point.x), round(point.y))
+     return result
+ 
+   def total_path_count(self):

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<!--
+  ccstats — self-hosted Claude Code usage stats (badge firmware + server)
+  Copyright (C) 2026 Zapador <zapador@zapador.net>
+
+  This program is free software; you can redistribute it and/or modify it under
+  the terms of version 2 of the GNU General Public License as published by the
+  Free Software Foundation. See the LICENSE file for the full text.
+
+  This program is distributed WITHOUT ANY WARRANTY; without even the implied
+  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+-->
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Claude Live Activity — Test</title>
+<style>
+  :root{ --bg:#0e1115; --panel:#171b21; --panel2:#1d2229; --line:#2a313a;
+    --fg:#d7dde5; --dim:#8893a2; --green:#3fd07f; --grey:#6b7682; --red:#e0564f; --amber:#ffb454; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--fg);
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; padding:22px; }
+  h1{ font-size:15px; margin:0 0 2px; letter-spacing:.04em; }
+  .sub{ color:var(--dim); font-size:11.5px; margin-bottom:18px; }
+  .sub b{ color:var(--amber); }
+  .wrap{ max-width:780px; margin:0 auto; }
+
+  .overall{ display:flex; align-items:center; gap:16px; padding:18px 20px; border-radius:12px;
+    background:var(--panel); border:1px solid var(--line); margin-bottom:18px; }
+  .bigdot{ width:30px; height:30px; border-radius:50%; background:var(--grey); flex:0 0 30px;
+    box-shadow:0 0 0 4px rgba(255,255,255,.04); }
+  .bigdot.working{ background:var(--green); box-shadow:0 0 0 4px rgba(63,208,127,.18),0 0 18px rgba(63,208,127,.5); animation:pulse 1.4s ease-in-out infinite; }
+  .bigdot.idle{ background:var(--grey); }
+  .bigdot.waiting{ background:var(--amber); box-shadow:0 0 0 4px rgba(255,180,84,.2),0 0 18px rgba(255,180,84,.55); animation:pulse 1.1s ease-in-out infinite; }
+  .bigdot.no_processes{ background:var(--red); box-shadow:0 0 0 4px rgba(224,86,79,.18); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.45;} }
+  .overall .label{ font-size:22px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+  .overall .label.waiting{ color:var(--amber); }
+  .overall .meta{ margin-left:auto; text-align:right; color:var(--dim); font-size:11px; }
+  .overall .meta .stale{ color:var(--red); font-weight:600; }
+
+  .sec{ color:var(--dim); font-size:11px; letter-spacing:.12em; text-transform:uppercase; margin:0 0 8px 2px; }
+  .users{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-bottom:20px; }
+  .user{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .user.waiting{ border-color:var(--amber); }
+  .user .top{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .user .name{ font-weight:600; font-size:14px; }
+  .pill{ margin-left:auto; font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:999px; font-weight:600; }
+  .pill.working{ background:rgba(63,208,127,.16); color:var(--green); }
+  .pill.idle{ background:rgba(107,118,130,.18); color:var(--grey); }
+  .pill.waiting{ background:rgba(255,180,84,.18); color:var(--amber); }
+  .srv{ font-size:9px; letter-spacing:.06em; text-transform:uppercase; padding:2px 6px; border-radius:6px;
+    background:var(--panel2); color:var(--dim); border:1px solid var(--line); margin-left:7px; }
+  .user.stale{ opacity:.5; }
+  .dot{ width:9px;height:9px;border-radius:50%;background:var(--grey);flex:0 0 9px; }
+  .dot.working{ background:var(--green); box-shadow:0 0 8px rgba(63,208,127,.6); }
+  .dot.waiting{ background:var(--amber); box-shadow:0 0 8px rgba(255,180,84,.6); }
+  .user .metric{ font-size:26px; font-weight:600; line-height:1.1; }
+  .user .metric small{ font-size:12px; color:var(--dim); font-weight:400; }
+  .user .since{ color:var(--dim); font-size:11px; margin-top:3px; }
+  .user .since.waiting{ color:var(--amber); font-weight:600; }
+  .user .pids{ color:#56606c; font-size:10px; margin-top:6px; word-break:break-all; }
+  .user .sigs{ color:var(--dim); font-size:10px; margin-top:7px; display:flex; align-items:center; gap:5px; }
+  .sig{ font-size:9px; letter-spacing:.06em; text-transform:uppercase; padding:2px 6px; border-radius:999px;
+    background:var(--panel2); color:var(--grey); border:1px solid var(--line); }
+  .sig.on{ background:rgba(63,208,127,.16); color:var(--green); border-color:rgba(63,208,127,.4); }
+  .bar{ height:5px; border-radius:3px; background:var(--panel2); margin-top:9px; overflow:hidden; }
+  .bar i{ display:block; height:100%; background:var(--green); width:0; transition:width .4s; }
+
+  .cols{ display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media(max-width:680px){ .cols{ grid-template-columns:1fr; } }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .thr{ display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed var(--line); }
+  .thr:last-child{ border-bottom:0; } .thr span:last-child{ color:var(--amber); }
+  #log{ list-style:none; margin:0; padding:0; max-height:340px; overflow:auto; font-size:11.5px; }
+  #log li{ padding:4px 2px; border-bottom:1px solid var(--line); color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #log li .t{ color:var(--dim); } #log li.work .a{ color:var(--green); } #log li.idle .a{ color:var(--grey); }
+  #log li.wait .a{ color:var(--amber); } #log li.none .a{ color:var(--red); }
+  #log .empty{ color:var(--dim); }
+  .err{ background:#3a2410; border:1px solid #5a3a18; color:#ffcf8f; padding:8px 12px; border-radius:8px; margin-bottom:14px; display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CLAUDE CODE · LIVE ACTIVITY MONITOR</h1>
+  <div class="sub">multi-signal active/idle (network + I/O + transcript) + AskUserQuestion-blocked detection · polling <b>/live-status.json</b> every 2s · <span id="src"></span></div>
+
+  <div class="err" id="err"></div>
+
+  <div class="overall">
+    <div class="bigdot" id="bigdot"></div>
+    <div class="label" id="overall">—</div>
+    <div class="meta">
+      <div id="updated">waiting for data…</div>
+      <div id="stale" class="stale" style="display:none">⚠ STALE — daemon may be down</div>
+    </div>
+  </div>
+
+  <div class="sec">Per-user</div>
+  <div class="users" id="users"></div>
+
+  <div class="cols">
+    <div>
+      <div class="sec">Transition log (newest first, last 50)</div>
+      <div class="card"><ul id="log"><li class="empty">No transitions observed yet…</li></ul></div>
+    </div>
+    <div>
+      <div class="sec">Thresholds in use</div>
+      <div class="card" id="thr"><div class="thr"><span>loading…</span><span></span></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $=s=>document.querySelector(s);
+  // Escape feed-derived strings before they touch innerHTML: live-status.json is folded together
+  // from REMOTE servers, so user/server/status/pids are untrusted. Legit status enums (working/
+  // idle/waiting) contain no special chars, so escaping leaves the ===-comparisons below intact.
+  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const TOKEN=new URLSearchParams(location.search).get('token')||'';
+  const LOGKEY='livetest_log';
+  let prev=null;
+  let log=[];
+  try{ log=JSON.parse(sessionStorage.getItem(LOGKEY)||'[]'); }catch(e){ log=[]; }
+
+  const lbl=s=> s==='waiting'?'HUMAN BOTTLENECK':(s||'').replace('_',' ');
+
+  function fmtDur(sinceIso){
+    if(!sinceIso) return '';
+    const s=Math.max(0,Math.floor((Date.now()-Date.parse(sinceIso))/1000));
+    const h=Math.floor(s/3600), m=Math.floor(s%3600/60), sec=s%60;
+    return (h?h+'h ':'')+(h||m?m+'m ':'')+sec+'s';
+  }
+  function fmtBps(b){ b=b||0; return b>=1e6?(b/1e6).toFixed(1)+'M':b>=1000?(b/1000).toFixed(1)+'k':Math.round(b)+''; }
+  function pushLog(cls,text){
+    log.unshift({t:new Date().toLocaleTimeString(),cls:cls,text:text});
+    if(log.length>50) log.length=50;
+    try{ sessionStorage.setItem(LOGKEY,JSON.stringify(log)); }catch(e){}
+    renderLog();
+  }
+  function renderLog(){
+    const ul=$('#log');
+    if(!log.length){ ul.innerHTML='<li class="empty">No transitions observed yet…</li>'; return; }
+    ul.innerHTML=log.map(e=>{
+      const cls=e.cls==='working'?'work':e.cls==='waiting'?'wait':e.cls==='no_processes'?'none':'idle';
+      return `<li class="${cls}"><span class="t">[${e.t}]</span> <span class="a">${esc(e.text)}</span></li>`;
+    }).join('');
+  }
+
+  function render(d){
+    const ov=d.status||'idle';
+    $('#bigdot').className='bigdot '+ov;
+    $('#overall').className='label '+(ov==='waiting'?'waiting':'');
+    $('#overall').textContent=lbl(ov);
+    const srvList=(d.servers&&d.servers.length)?d.servers.join(', '):(d.server||'main');
+    $('#updated').textContent='updated '+(d.updated_at||'').slice(11,19)+' · '+srvList;
+    const age=d.updated_at?(Date.now()-Date.parse(d.updated_at))/1000:999;
+    $('#stale').style.display=age>8?'block':'none';
+
+    const users=d.users||{};
+    const names=Object.keys(users).sort();
+    $('#users').innerHTML=names.map(u=>{
+      const x=users[u], st=esc(x.status||'idle');
+      const io=(x.io_bps!=null?x.io_bps:null), net=(x.net_bps!=null?x.net_bps:0), sig=(x.signals||'----');
+      const name=esc(x.user||u), server=esc(x.server||'');
+      // bar = network activity on a log scale (primary signal): idle 0 → empty, a streaming turn → full
+      const w = net>0 ? Math.min(100, Math.max(6, Math.log10(net+1)*20)) : 0;
+      const barcol = st==='working'?'var(--green)': st==='waiting'?'var(--amber)':'var(--grey)';
+      const sinceTxt = x.stale ? 'offline · last seen '+fmtDur(x.since)+' ago'
+        : st==='waiting' ? 'HUMAN BOTTLENECK · '+fmtDur(x.since)
+        : st+' for '+fmtDur(x.since);
+      const wextra = (x.waiting && x.waiting_sessions && x.waiting_sessions.length)
+        ? `<div class="pids">blocked session(s): ${x.waiting_sessions.length}</div>` : '';
+      // raw signal chips fired THIS sample: N=net & R=owes-response are STATE signals; I=io T=transcript diagnostic
+      const sigLbl=[['N','net'],['I','io'],['T','txt'],['R','owes']];
+      const sigHtml=sigLbl.map((p,i)=>`<span class="sig ${sig[i]&&sig[i]!=='-'?'on':''}">${p[1]}</span>`).join('');
+      const ioTxt = io!=null ? `${fmtBps(io)} B/s` : '—';
+      return `<div class="user ${st==='waiting'?'waiting':''} ${x.stale?'stale':''}">
+        <div class="top"><span class="dot ${st}"></span><span class="name">${name}</span><span class="srv">${server}</span><span class="pill ${st}">${st==='waiting'?'WAITING':st}</span></div>
+        <div class="metric">${fmtBps(net)}<small> B/s net · ${ioTxt} i/o</small></div>
+        <div class="since ${st==='waiting'?'waiting':''}">${sinceTxt}</div>
+        <div class="bar"><i style="width:${w}%;background:${barcol}"></i></div>
+        <div class="sigs">signals: ${sigHtml}</div>
+        <div class="pids">pids: ${esc((x.pids&&x.pids.length)?x.pids.join(', '):'—')}</div>
+        ${wextra}
+      </div>`;
+    }).join('') || '<div class="user" style="color:var(--dim)">no claude processes seen yet</div>';
+
+    const t=d.thresholds||{};
+    $('#thr').innerHTML=[
+      ['Active rule', t.active_rule||'net over threshold OR model owes a response'],
+      ['Network signal ≥', (t.net_bytes_per_s!=null?t.net_bytes_per_s+' B/s (remote socket — STATE)':'—')],
+      ['Owes-response (turn)', (t.turn_signal!=null?(t.turn_signal?('on — holds working through API latency (cap '+(t.turn_cap_s||'?')+'s) — STATE'):'off'):'—')],
+      ['I/O signal', (t.io_bytes_per_s!=null?'≥ '+t.io_bytes_per_s+' B/s (diagnostic only)':'—')],
+      ['Transcript-mtime', (t.transcript_signal!=null?(t.transcript_signal?'on (diagnostic only)':'off'):'—')],
+      ['Per-machine overrides', t.config_overrides?JSON.stringify(t.config_overrides):'(defaults)'],
+      ['Idle debounce', (t.idle_debounce_s!=null?t.idle_debounce_s+' s (net + owes both quiet)':'—')],
+      ['Active debounce', (t.active_debounce_s!=null?t.active_debounce_s+' s':'—')],
+      ['Sample interval', (t.sample_interval_s!=null?t.sample_interval_s+' s':'—')],
+      ['Waiting trigger', 'unanswered '+(t.wait_tool||'AskUserQuestion')],
+    ].map(r=>`<div class="thr"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('');
+
+    const snap={overall:ov,users:{}};
+    names.forEach(u=>snap.users[u]=users[u].status||'idle');
+    if(prev){
+      if(prev.overall!==snap.overall)
+        pushLog(snap.overall, `OVERALL: ${lbl(prev.overall)} → ${lbl(snap.overall)}`);
+      names.forEach(u=>{
+        const a=prev.users[u], b=snap.users[u];
+        if(a!==undefined && a!==b){
+          const netS=`net ${fmtBps(users[u].net_bps)}B/s`, io=users[u].io_bps, ioS=(io!=null?` io ${fmtBps(io)}B/s`:'');
+          const msg = b==='waiting' ? `${u}: ${a} → HUMAN BOTTLENECK`
+                                    : `${u}: ${a} → ${b} (${netS}${ioS} [${users[u].signals||'----'}])`;
+          pushLog(b, msg);
+        }
+      });
+    }
+    prev=snap;
+  }
+
+  async function poll(){
+    try{
+      const r=await fetch('/live-status.json?token='+encodeURIComponent(TOKEN),{cache:'no-store'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      $('#err').style.display='none';
+      render(await r.json());
+    }catch(e){
+      const el=$('#err'); el.style.display='block';
+      el.textContent='⚠ Cannot load /live-status.json ('+e.message+'). Is the monitor running, and is ?token=… present?';
+    }
+  }
+
+  $('#src').textContent='token '+(TOKEN?'✓':'✗ (append ?token=…)');
+  renderLog();
+  poll();
+  setInterval(poll,2000);
+})();
+</script>
+</body>
+</html>

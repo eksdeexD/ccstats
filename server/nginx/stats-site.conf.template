@@ -1,0 +1,109 @@
+# ccstats — self-hosted Claude Code usage stats (badge firmware + server)
+# Copyright (C) 2026 Zapador <zapador@zapador.net>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See the LICENSE file for the full text.
+#
+# This program is distributed WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+# Claude Code usage stats — nginx vhost TEMPLATE.
+# The setup agent renders this (replace __DOMAIN__ / __TOKEN__ / __WEBROOT__), drops the location
+# blocks for any optional feature not installed, enables it, `nginx -t`, reloads, then (if a real
+# domain) runs `certbot --nginx -d __DOMAIN__` which rewrites this to add HTTPS + redirect.
+# __WEBROOT__ defaults to /var/www/stats. The token gates every endpoint; fonts are public.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__;
+
+    # Let's Encrypt HTTP-01 challenge (used by certbot once DNS points here).
+    location ^~ /.well-known/acme-challenge/ { root /var/www/html; default_type "text/plain"; }
+
+    # ── core: the badge/stats JSON (always present) ──
+    location = /claude-stats.json {
+        if ($arg_token != "__TOKEN__") { return 403; }
+        alias __WEBROOT__/claude-stats.json;
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        add_header X-Robots-Tag "noindex" always;
+    }
+
+    # ── optional: /viewscreens dashboard (drop these blocks if not installed) ──
+    #    Canvas (PicoGraphics-style) dashboard. The page is token-gated like the feeds;
+    #    the JS/font assets are public (no secrets), same as the old /view fonts.
+    location = /viewscreens {
+        if ($arg_token != "__TOKEN__") { return 403; }
+        alias __WEBROOT__/viewscreens/index.html;
+        default_type text/html;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex" always;
+    }
+    location = /viewscreens/ { return 301 /viewscreens$is_args$args; }
+    # shared assets for /viewscreens (public; no secrets)
+    location = /viewscreens/pico.js    { alias __WEBROOT__/viewscreens/pico.js;    default_type application/javascript; add_header Cache-Control "no-store"; }
+    location = /viewscreens/screens.js { alias __WEBROOT__/viewscreens/screens.js; default_type application/javascript; add_header Cache-Control "no-store"; }
+    # font library (public) — must declare json so the picker's fonts.json serves correctly
+    location ^~ /viewscreens/fonts/ {
+        alias __WEBROOT__/viewscreens/fonts/;
+        types { font/woff2 woff2; application/json json; font/ttf ttf; text/plain txt md; }
+        default_type application/octet-stream;
+        add_header Cache-Control "public, max-age=86400";
+    }
+
+    # ── optional: live-activity monitor (drop this block if the monitor not installed) ──
+    location = /live-status.json {
+        if ($arg_token != "__TOKEN__") { return 403; }
+        alias __WEBROOT__/live-status.json;
+        default_type application/json;
+        add_header Cache-Control "no-store";
+    }
+    location = /livetest {
+        if ($arg_token != "__TOKEN__") { return 403; }
+        alias __WEBROOT__/livetest/index.html;
+        default_type text/html;
+        add_header Cache-Control "no-store";
+    }
+    location = /livetest/ { return 301 /livetest$is_args$args; }
+
+    # ── optional: session/weekly limits feed (CLAUDE MONITOR; drop if usage-monitor not installed) ──
+    location = /claude-limits.json {
+        if ($arg_token != "__TOKEN__") { return 403; }
+        alias __WEBROOT__/claude-limits.json;
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex" always;
+    }
+
+    # ── optional: avatar content pack (badge message banks; edit + redeploy, no firmware release) ──
+    location = /content-pack.json {
+        if ($arg_token != "__TOKEN__") { return 403; }
+        alias __WEBROOT__/content-pack.json;
+        default_type application/json;
+        add_header Cache-Control "public, max-age=3600";
+        add_header X-Robots-Tag "noindex" always;
+    }
+
+    # ── optional: head-to-head competition (drop both blocks if not competing) ──
+    # /competitor.json is what a FRIEND pulls — gated by a SEPARATE __PEER_TOKEN__ (never the master
+    # __TOKEN__, so a peer can't reach /viewscreens or /competition.json). Issue ONE peer token, give it to
+    # your friend(s); they paste it into their config.json peers[].token.
+    location = /competitor.json {
+        if ($arg_token != "__PEER_TOKEN__") { return 403; }
+        alias __WEBROOT__/competitor.json;
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex" always;
+    }
+    # /competition.json = you + every fetched peer, for your OWN /viewscreens + badge (master __TOKEN__).
+    location = /competition.json {
+        if ($arg_token != "__TOKEN__") { return 403; }
+        alias __WEBROOT__/competition.json;
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex" always;
+    }
+
+    location / { return 404; }
+}

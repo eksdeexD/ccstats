@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# ccstats — self-hosted Claude Code usage stats (badge firmware + server)
+# Copyright (C) 2026 Zapador <zapador@zapador.net>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See the LICENSE file for the full text.
+#
+# This program is distributed WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+# Leak scan — refuses to commit credentials or secret files.
+# Enable once per clone:  git config core.hooksPath tools/hooks
+# Optional: a gitignored .leakscan-local in the repo root with one secret literal per line
+# (tokens, WiFi password, ...) extends the scan with exact-match blocking.
+set -eu
+
+# Credential shapes + known-forbidden strings, scanned in every staged blob.
+PATTERNS='github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}'
+
+git diff --cached --name-only --diff-filter=ACM -z | {
+    fail=0
+    while IFS= read -r -d '' f; do
+        case "$f" in
+            */secrets.py|secrets.py)
+                printf 'LEAK-SCAN: refusing to commit secrets file: %s\n' "$f" >&2; fail=1 ;;
+            .leakscan-local)
+                printf 'LEAK-SCAN: refusing to commit .leakscan-local\n' >&2; fail=1 ;;
+        esac
+        blob=$(git show ":$f" 2>/dev/null) || continue
+        if printf '%s' "$blob" | grep -qE "$PATTERNS"; then
+            printf 'LEAK-SCAN: credential-shaped string in staged %s\n' "$f" >&2; fail=1
+        fi
+        if [ -s .leakscan-local ] && printf '%s' "$blob" | grep -qFf .leakscan-local; then
+            printf 'LEAK-SCAN: string from .leakscan-local found in staged %s\n' "$f" >&2; fail=1
+        fi
+    done
+    exit "$fail"
+} || { printf 'commit blocked by leak scan\n' >&2; exit 1; }
+exit 0

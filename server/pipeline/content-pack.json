@@ -1,0 +1,174 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "pack_version": 1
+  },
+  "working_words": [
+    "ACCOMPLISHING",
+    "ACTIONING",
+    "ACTUALIZING",
+    "BAKING",
+    "BOOPING",
+    "BREWING",
+    "CALCULATING",
+    "CEREBRATING",
+    "CHANNELLING",
+    "CHURNING",
+    "CLAUDING",
+    "COALESCING",
+    "COGITATING",
+    "COMPUTING",
+    "COMBOBULATING",
+    "CONCOCTING",
+    "CONSIDERING",
+    "CONTEMPLATING",
+    "COOKING",
+    "CRAFTING",
+    "CREATING",
+    "CRUNCHING",
+    "DECIPHERING",
+    "DELIBERATING",
+    "DETERMINING",
+    "DISCOMBOBULATING",
+    "DOING",
+    "EFFECTING",
+    "ELUCIDATING",
+    "ENCHANTING",
+    "ENVISIONING",
+    "FINAGLING",
+    "FLIBBERTIGIBBETING",
+    "FORGING",
+    "FORMING",
+    "FROLICKING",
+    "GENERATING",
+    "GERMINATING",
+    "HATCHING",
+    "HERDING",
+    "HONKING",
+    "IDEATING",
+    "IMAGINING",
+    "INCUBATING",
+    "INFERRING",
+    "MANIFESTING",
+    "MARINATING",
+    "MEANDERING",
+    "MOSEYING",
+    "MULLING",
+    "MUSTERING",
+    "MUSING",
+    "NOODLING",
+    "PERCOLATING",
+    "PERUSING",
+    "PHILOSOPHISING",
+    "PONTIFICATING",
+    "PONDERING",
+    "PROCESSING",
+    "PUTTERING",
+    "PUZZLING",
+    "RETICULATING",
+    "RUMINATING",
+    "SCHEMING",
+    "SCHLEPPING",
+    "SHIMMYING",
+    "SIMMERING",
+    "SMOOSHING",
+    "SPELUNKING",
+    "SPINNING",
+    "STEWING",
+    "SUMMONING",
+    "SUSSING",
+    "SYNTHESIZING",
+    "THINKING",
+    "TINKERING",
+    "TRANSMUTING",
+    "UNFURLING",
+    "UNRAVELLING",
+    "VIBING",
+    "WANDERING",
+    "WHIRRING",
+    "WIBBLING",
+    "WORKING",
+    "WRANGLING"
+  ],
+  "bottleneck_tiers": [
+    [
+      "Awaiting human input.",
+      "Standing by.",
+      "Ready when you are.",
+      "Take your time.",
+      "Awaiting your move."
+    ],
+    [
+      "WHAT'S UP?",
+      "Still here.",
+      "Any day now.",
+      "I could've written a poem by now.",
+      "Tick... tock..."
+    ],
+    [
+      "HELLO?",
+      "ARE YOU OKAY?",
+      "BETA TESTING?",
+      "...",
+      "Did you fall asleep?",
+      "I'll wait. Forever, apparently."
+    ]
+  ],
+  "book_taunts": [
+    "Could've written \"{book}\" by now.",
+    "\"{book}\"? Done. Still waiting.",
+    "Wrote \"{book}\" already. You?",
+    "A whole \"{book}\", while you ponder."
+  ],
+  "limit_lines": [
+    "Someone's been efficient! {pct}% {window} limit, wow.",
+    "{pct}% of the {window} limit. Easy, tiger.",
+    "Whoa - {pct}% {window} used. Pace yourself.",
+    "{window} limit at {pct}%. Living dangerously.",
+    "{pct}%?! Save some for tomorrow.",
+    "Sweating a little here: {pct}% {window}.",
+    "{pct}% {window} limit. No pressure. (Pressure.)"
+  ],
+  "streak_lines": [
+    "6 hours to save the streak.",
+    "Don't let the streak die like this.",
+    "The robot is judging your idleness.",
+    "Tick tock... the streak is waiting.",
+    "One prompt keeps it alive.",
+    "Your streak called. It's lonely.",
+    "Midnight's coming for your streak.",
+    "No activity today. Brave choice.",
+    "A streak unkindled is a streak undone.",
+    "Feed the fire before midnight."
+  ],
+  "quotes": [
+    {
+      "q": "I'm not afraid of contradicting myself, because to me it seems that a man who remains consistent his whole life must be an idiot.",
+      "a": "Bhagwan Shree Rajneesh"
+    },
+    {
+      "q": "Imagination is more important than knowledge.",
+      "a": "Albert Einstein"
+    },
+    {
+      "q": "Facts do not cease to exist because they are ignored.",
+      "a": "Aldous Huxley"
+    },
+    {
+      "q": "The chief cause of problems is solutions.",
+      "a": "Eric Sevareid"
+    },
+    {
+      "q": "The first principle is that you must not fool yourself - and you are the easiest person to fool.",
+      "a": "Richard Feynman"
+    },
+    {
+      "q": "Extraordinary claims require extraordinary evidence.",
+      "a": "Carl Sagan"
+    },
+    {
+      "q": "Anyone who believes exponential growth can go on forever in a finite world is either a madman or an economist.",
+      "a": "Kenneth Boulding"
+    }
+  ]
+}
