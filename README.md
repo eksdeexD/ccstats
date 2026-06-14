@@ -15,6 +15,18 @@ its own** — if you only want the web dashboard, you don't need a badge.
   &nbsp;&nbsp;&nbsp;
   <img src="docs/img/usage_limits.png" alt="Usage limits screen" width="322" height="242">
   <br>
+  <img src="docs/img/words.png" alt="Words typed screen" width="322" height="242">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/img/projects.png" alt="Per-project breakdown screen" width="322" height="242">
+  <br>
+  <img src="docs/img/flick_working.png" alt="Live avatar — working" width="320" height="240">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/img/blip_waiting.png" alt="Live avatar — waiting on you" width="320" height="240">
+  <br>
+  <img src="docs/img/dimple_standby.png" alt="Live avatar — idle / standby" width="320" height="240">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/img/dimple_celebration.png" alt="Live avatar — celebration" width="320" height="240">
+  <br>
   <img src="docs/img/rhythm.png" alt="Activity rhythm screen" width="322" height="242">
   &nbsp;&nbsp;&nbsp;
   <img src="docs/img/palettes.png" alt="Palette picker screen" width="322" height="242">
