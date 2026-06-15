@@ -11,33 +11,13 @@ its own** — if you only want the web dashboard, you don't need a badge.
 <p align="center">
   <img src="docs/img/badgeware-tufty.jpg" alt="Badgeware Tufty 2350 running ccstats" width="666" height="444">
   <br>
-  <img src="docs/img/claude_code.png" alt="Claude Code avatar screen" width="322" height="242">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/img/usage_limits.png" alt="Usage limits screen" width="322" height="242">
+  <img src="docs/img/primary_screens.png" alt="Primary stat screens" width="650" height="490">
   <br>
-  <img src="docs/img/words.png" alt="Words typed screen" width="322" height="242">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/img/projects.png" alt="Per-project breakdown screen" width="322" height="242">
+  <img src="docs/img/avatars.png" alt="Live avatar states" width="650" height="490">
   <br>
-  <img src="docs/img/flick_working.png" alt="Live avatar — working" width="320" height="240">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/img/blip_waiting.png" alt="Live avatar — waiting on you" width="320" height="240">
+  <img src="docs/img/palettes.png" alt="Color palettes" width="650" height="490">
   <br>
-  <img src="docs/img/dimple_standby.png" alt="Live avatar — idle / standby" width="320" height="240">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/img/dimple_celebration.png" alt="Live avatar — celebration" width="320" height="240">
-  <br>
-  <img src="docs/img/rhythm.png" alt="Activity rhythm screen" width="322" height="242">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/img/palettes.png" alt="Palette picker screen" width="322" height="242">
-  <br>
-  <img src="docs/img/versus.png" alt="Versus competition screen" width="322" height="242">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/img/versus-trophies.png" alt="Versus trophies screen" width="322" height="242">
-  <br>
-  <img src="docs/img/tools.png" alt="Tools screen" width="322" height="242">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/img/screens.png" alt="Screens overview" width="322" height="242">
+  <img src="docs/img/options.png" alt="On-device options" width="650" height="490">
 </p>
 
 
