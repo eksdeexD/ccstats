@@ -1,6 +1,6 @@
 # ccstats
 
-Self-hosted **Claude Code usage stats** — a pipeline that turns each Linux user's Claude Code
+Self-hosted **Claude Code usage stats** — a pipeline that turns a user's Claude Code
 sessions into pre-computed JSON feeds and firmware for a **Badgeware Tufty 2350** badge that displays the stats on a 320×240 LCD.
 Also a multi-screen web dashboard, that can be used without the hardware device.
 
