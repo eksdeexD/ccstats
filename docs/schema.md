@@ -15,11 +15,13 @@ Compact JSON, regenerated every 5 min. `meta.schema_version` is `1` — bump on 
   "totals": {
     "sessions": 0, "work_sessions": 0, "active_days": 0,
     "current_streak": 0, "longest_streak": 0,
-    "longest_session_min": 0,   // longest single unbroken work session (per-session; never summed)
-    "avg_session_min": 0,       // mean work-session length = summed span time / work_sessions (concurrency irrelevant)
-    "total_active_min": 0,      // UNION of all sessions' active spans — "was ANY session active" wall-clock
-                                //   time. Concurrent/parallel sessions count ONCE (never double-counted),
-                                //   so this is bounded by real elapsed time, not the sum of session times.
+    "longest_session_min": 0,   // longest single work session in CREDITED minutes (per-session; never summed)
+    "avg_session_min": 0,       // mean work-session length = summed credited time / work_sessions (concurrency irrelevant)
+    "total_active_min": 0,      // UNION of all sessions' active spans — "was ANY session active" credited
+                                //   time. A session breaks on a > 20 min idle gap; within a session any
+                                //   single idle gap credits at most 5 min (see active_spans). Concurrent/
+                                //   parallel sessions count ONCE (never double-counted), so this is bounded
+                                //   by real elapsed time, not the sum of session times.
     "nightowl_active_min": 0,   // union active minutes falling in local hours 00:00–05:59
     "user_words": 0,            // real words typed (whitespace split, URLs stripped; excl. compaction summaries + pasted-markdown prompts)
     "user_chars": 0,            // chars typed (URLs stripped)
@@ -59,7 +61,7 @@ Compact JSON, regenerated every 5 min. `meta.schema_version` is `1` — bump on 
                   "cost_estimate_usd": 0.0,
                   "total_active_min": 0, "longest_session_min": 0,   // active time in this project: union of
                                                                      //   its sessions' spans (concurrent → once)
-                  "avg_session_min": 0,                              // mean work-session length (summed basis; gap > 20 min splits)
+                  "avg_session_min": 0,                              // mean work-session length (summed basis; > 20 min gap splits, idle capped at 5 min)
                   "last_active": "…"} ]   // desc by tokens_total
 }
 ```
@@ -97,8 +99,8 @@ The main server keys ledger rows by `server:session_id`, so a remote's sessions 
 The per-session `metrics` blob includes `model_tokens`, `hourly`, `daily_activity`,
 `daily_model_tokens` (`{date: {model: {input,output,cache_read,cache_create}}}`, added for the
 priciest-day record — main prices it), and `active_spans` (`[["<utc-iso start>","<utc-iso end>"], …]`
-— the raw work-session intervals; main UNIONs these across all sessions so concurrent sessions count
-once for active time). Adding a per-session field like this means **remotes must re-ship** the
+— the session's active-time intervals, each idle gap already capped at 5 min (a > 20 min gap splits
+the session); main UNIONs these across all sessions so concurrent sessions count once for active time). Adding a per-session field like this means **remotes must re-ship** the
 updated extractor (`provision-remote.sh --update all`) before their data contributes to that field;
 until then a remote's sessions fall back to their *summed* active time (not de-overlapped) and
 everything else keeps working.

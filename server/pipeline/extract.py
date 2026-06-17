@@ -90,7 +90,10 @@ MD_HEADER_RE = re.compile(r"^[ \t]*#{2,6}[ \t]+\S", re.M)
 MD_BOLD_RE = re.compile(r"\*\*[^*\n]+\*\*")
 MD_DROP_MIN = 3
 IGNORE_RE = re.compile(r"\bignore\b", re.IGNORECASE)
-WORK_SESSION_GAP = timedelta(minutes=20)
+WORK_SESSION_GAP = timedelta(minutes=20)   # an idle gap > this ENDS a work-session (continuity boundary)
+ACTIVE_GAP_CAP = timedelta(minutes=5)      # but any single within-session idle gap credits AT MOST this much
+                                           # to active/project/endurance time (a longer break ≤20 min keeps
+                                           # the session whole yet only ever adds 5 min of credited time)
 SCHEMA_VERSION = 1
 DAY = timedelta(days=1)
 FALLBACK_MODEL = "claude-opus-4-7"
@@ -426,39 +429,62 @@ def metrics_from_records(asst, users, events, date_min, date_max):
     work_sessions = 0
     total_active_min = 0.0
     longest_session_min = 0.0
-    # (start, end) of each work-session span. Shipped per session so the FOLD can take the UNION
-    # of overlapping/concurrent spans across sessions instead of summing them — i.e. count "was ANY
-    # session active" wall-clock time, never double-counting parallel sessions. A single session
-    # never overlaps itself, so summing its own spans == their union: per-session total_active_min
-    # below is already correct; the de-overlap only matters across sessions, in combine().
+    # (start, end) of each ACTIVE-TIME span. Shipped per session so the FOLD can take the UNION of
+    # overlapping/concurrent spans across sessions instead of summing them — i.e. count "was ANY
+    # session active" time, never double-counting parallel sessions. A single session never overlaps
+    # itself, so summing its own spans == their union: per-session total_active_min below is already
+    # correct; the de-overlap only matters across sessions, in combine().
+    #
+    # Two distinct rules govern the timeline (see WORK_SESSION_GAP / ACTIVE_GAP_CAP):
+    #   • Continuity — a gap > 20 min ENDS the work-session (drives work_sessions / endurance grouping).
+    #   • Credited time — any single within-session idle gap adds AT MOST 5 min. A gap ≤ 5 min counts in
+    #     full (the span just continues); a 5–20 min gap counts as exactly 5 min (the span closes 5 min
+    #     after the last event and a fresh span opens at the next event). So a long-ish break keeps the
+    #     session whole yet never inflates active/project/endurance time by more than 5 min.
     spans = []
-    first = prev = None
+    sess_min = 0.0            # capped active minutes accrued in the CURRENT work-session
+    span_start = prev = None  # span_start = start of the open active span; prev = last event seen
+
+    def _bank_session():
+        nonlocal work_sessions, total_active_min, longest_session_min
+        work_sessions += 1
+        total_active_min += sess_min
+        longest_session_min = max(longest_session_min, sess_min)
+
     for ts in events:
         if prev is None:
-            first = prev = ts
-        elif ts - prev > WORK_SESSION_GAP:
-            dur = (prev - first).total_seconds() / 60.0
-            work_sessions += 1; total_active_min += dur; longest_session_min = max(longest_session_min, dur)
-            if prev > first:
-                spans.append((first, prev))
-            first = prev = ts
-        else:
+            span_start = prev = ts
+            sess_min = 0.0
+            continue
+        gap = ts - prev
+        if gap > WORK_SESSION_GAP:                       # idle > 20 min → session ends here
+            if prev > span_start:
+                spans.append((span_start, prev))
+            _bank_session()
+            span_start = prev = ts
+            sess_min = 0.0
+        elif gap > ACTIVE_GAP_CAP:                       # idle 5–20 min → credit the 5 min cap, break span
+            spans.append((span_start, prev + ACTIVE_GAP_CAP))
+            sess_min += ACTIVE_GAP_CAP.total_seconds() / 60.0
+            span_start = prev = ts                       # next event opens a fresh span
+        else:                                            # idle ≤ 5 min → counts in full, span continues
+            sess_min += gap.total_seconds() / 60.0
             prev = ts
     if prev is not None:
-        dur = (prev - first).total_seconds() / 60.0
-        work_sessions += 1; total_active_min += dur; longest_session_min = max(longest_session_min, dur)
-        if prev > first:
-            spans.append((first, prev))
+        if prev > span_start:
+            spans.append((span_start, prev))
+        _bank_session()
 
-    # per-day active minutes: sum each within-work-session gap, attributed to the earlier event's
-    # local day (a span crossing midnight lands on its start day — rare, negligible). Summing every
-    # gap <= WORK_SESSION_GAP reconstructs total_active_min, now split per day for the TODAY screen.
-    # (Computed per session so it folds across the ledger AND remote fragments — remotes must ship it.)
+    # per-day active minutes: sum each within-work-session gap (capped at ACTIVE_GAP_CAP, same rule as
+    # the spans above), attributed to the earlier event's local day (a gap crossing midnight lands on
+    # its start day — rare, negligible). Summing every within-session gap (<= WORK_SESSION_GAP), each
+    # capped, reconstructs total_active_min, now split per day for the TODAY screen. (Computed per
+    # session so it folds across the ledger AND remote fragments — remotes must ship it.)
     daily_active = defaultdict(float)
     nightowl_active_min = 0.0   # cumulative active minutes in local hours 00:00–05:59 (NIGHT OWL trophy)
     for a, b in zip(events, events[1:]):
         if b - a <= WORK_SESSION_GAP:
-            mins = (b - a).total_seconds() / 60.0
+            mins = min(b - a, ACTIVE_GAP_CAP).total_seconds() / 60.0
             daily_active[local_date_str(a)] += mins
             if a.astimezone(TZ).hour < 6:
                 nightowl_active_min += mins
