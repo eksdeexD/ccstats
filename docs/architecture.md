@@ -23,7 +23,9 @@ project is excluded. Reading session files needs **root** (they're mode `0600` i
 - **Subagent files** (`<sessionId>/subagents/**`) are folded into their parent session; their
   model calls count (dedup makes it safe).
 - **Sessions** = count of top-level `<encoded-cwd>/<sessionId>.jsonl` files. **Work sessions** =
-  each session's event timeline split on gaps > 20 min.
+  each session's event timeline split on idle gaps > 20 min. Active/project/endurance time credits
+  each within-session idle gap at most 5 min (a longer gap ≤ 20 min keeps the session whole but still
+  only adds 5 min), so short breaks never inflate the totals.
 - All JSONL timestamps are UTC; converted to the configured timezone before bucketing.
 - Robust to corrupt/truncated lines and missing usage fields.
 

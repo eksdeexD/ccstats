@@ -354,7 +354,8 @@ sections C–D are the limits and live-activity feeds. Everything is here, group
   plus `pricing_date` and a `note`).
   ⚠️ `tokens_total` is usually **cache-read-dominated** — prefer `tokens_output` (or input+output) for a
   "real work" headline.
-- **Activity:** `sessions`, `work_sessions` (timeline split on >20 min gaps), `active_days`,
+- **Activity:** `sessions`, `work_sessions` (timeline split on >20 min idle gaps; within a session each
+  idle gap credits ≤5 min of active/endurance time), `active_days`,
   `current_streak`, `longest_streak`, `longest_session_min` (endurance), `avg_session_min`,
   `total_active_min`, `nightowl_active_min` (active minutes in local 00:00–05:59).
 - **Human input:** `user_prompts`; `user_words` (real whitespace words, URLs stripped); `user_chars`
