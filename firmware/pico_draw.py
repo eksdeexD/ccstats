@@ -39,9 +39,10 @@ class PicoDraw:
         self.clock_text = "--:--"  # footer clock; the feed's generated_at HH:MM
         self.title_override = None  # replaces any chrome title (palette preview flow)
         self.connection_online = True  # footer status dot: palette status pen / black
+        self.wifi_bars = 0  # footer signal glyph: lit bars 0..4 (navigation sets it)
+        self.wifi_indicator_on = True  # DISPLAY > WIFI INDICATOR toggle (navigation sets it)
         self.battery_cells = 4  # footer fuel gauge state (navigation sets these)
         self.battery_critical = False
-        self.battery_static_empty = False
         self.battery_charging = False
         self._cap_top_cache = {}  # (font_key, px) -> rows between draw-y and the cap top
         self._advance_cache = {}  # (font_key, px) -> {character: real advance}

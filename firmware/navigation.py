@@ -27,6 +27,7 @@ import screen_registry
 import screens_options
 import screens_tokens
 import settings
+import wifi_signal
 from pico_draw import PicoDraw
 import screen_shared
 from screen_shared import BATTERY_BLINK_MILLISECONDS, FOOTER_Y, SCREEN_WIDTH
@@ -67,6 +68,10 @@ class Navigation:
         self.edit_flow = None  # active contextual-B flow (screens_options.B_FLOWS)
         self.backlight_dimmed = None  # None forces the first update_backlight apply
         self._last_battery_blink_phase = None  # tracks the 1 Hz critical-blink frame
+        # last footer values actually painted — so the change-gated footer refresh
+        # repaints the WiFi/battery glyphs when they move without a full redraw
+        self._footer_wifi_drawn = None
+        self._footer_battery_drawn = None
         self.painter.clock_text = feed_clock_text(stats_payload)
         saved_sprite = settings.get("sprite_name")
         if saved_sprite in avatar_frames.SPRITE_ORDER:  # stale names fall back to the default
@@ -305,30 +310,53 @@ class Navigation:
                          letter_spacing=1, align="c")
         self._last_battery_blink_phase = badge.ticks // BATTERY_BLINK_MILLISECONDS
 
-    def _battery_static_empty(self):
-        """The low-power static state: on battery, saver on, live channel off —
-        screens sit still on a 5-minute pitch, so a blink would need forced
-        repaints. There the critical level shows as an empty battery instead,
-        with no blink and no extra repaints (user call 2026-06-14). This is the
-        same condition as animator.on_battery."""
-        return self.scheduler.on_battery and not self.scheduler.live_status_on_battery
-
     def _set_battery_painter(self, painter):
+        painter.wifi_bars = wifi_signal.bars()
+        painter.wifi_indicator_on = settings.get("wifi_indicator")
         painter.battery_cells = battery_gauge.cells()
         painter.battery_critical = battery_gauge.critical()
-        painter.battery_static_empty = self._battery_static_empty()
         painter.battery_charging = badge.is_charging()
+
+    def _footer_wifi_value(self):
+        # None when the indicator is off, so its (still-sampling) RSSI can't drive
+        # a pointless footer repaint while nothing is shown
+        return wifi_signal.bars() if settings.get("wifi_indicator") else None
+
+    def note_footer_painted(self):
+        """Record the WiFi/battery values a full redraw just rendered, so the
+        change-gated footer refresh below doesn't immediately re-fire."""
+        self._footer_wifi_drawn = self._footer_wifi_value()
+        self._footer_battery_drawn = battery_gauge.cells()
+
+    def refresh_footer_if_changed(self):
+        """Repaint just the footer WiFi + battery icons the moment their cached
+        values change. Both sample on a ~15 s cadence, so this repaints at most
+        about once / 15 s and ONLY when a value actually moved — a stationary
+        badge still sits still. It fills the gap left by the rare full redraw on
+        a save-mode static screen, where the footer would otherwise lag the live
+        signal / level by a whole feed-poll interval (~15 min on battery).
+        Returns True when it drew (the caller then runs display.update())."""
+        if self.edit_flow:
+            return False  # a flow owns the whole screen; its own animate() repaints
+        if (self._footer_wifi_value() == self._footer_wifi_drawn
+                and battery_gauge.cells() == self._footer_battery_drawn):
+            return False
+        self._set_battery_painter(self.painter)
+        screen_shared.draw_wifi_icon(self.painter)
+        screen_shared.draw_battery_icon(self.painter)
+        self.note_footer_painted()
+        return True
 
     def animate_battery_if_due(self):
         """Repaint just the footer battery rect at 1 Hz when it needs to
         animate: the charging fill sweep (1->2->3->4->1), or the critical
-        single-bar blink on an animating screen. Save-mode static screens (an
-        empty battery) and full-bleed flows never animate. Returns True when it
-        drew (the caller then runs display.update())."""
+        single-bar blink. The blink runs on battery EVEN with the saver on
+        (user call 2026-06-17) — a near-empty cell is exactly when the warning
+        matters most, so the extra repaints are worth it. Full-bleed flows never
+        animate. Returns True when it drew (the caller then runs display.update())."""
         if self.edit_flow:
             return False  # a flow owns the screen; its own animate() repaints
-        animate = badge.is_charging() or (
-            battery_gauge.critical() and not self._battery_static_empty())
+        animate = badge.is_charging() or battery_gauge.critical()
         if not animate:
             return False
         phase = badge.ticks // BATTERY_BLINK_MILLISECONDS
@@ -367,11 +395,14 @@ def start(theme, stats_payload):
     # screens are static in between — also the right shape for battery).
     navigation = Navigation(theme, stats_payload)
     battery_gauge.prime()  # seed the fuel gauge before the first paint
+    wifi_signal.prime()  # seed the footer signal glyph too
     navigation.draw()
     display.update()
+    navigation.note_footer_painted()  # seed the footer change-tracking
     while True:
         badge.poll()
         battery_gauge.sample_if_due()
+        wifi_signal.sample_if_due()
         on_battery = not badge.usb_connected()
         battery_gauge.note_power(not on_battery)  # USB clears the critical latch
         if battery_gauge.should_power_off(on_battery):
@@ -385,6 +416,7 @@ def start(theme, stats_payload):
         if navigation_changed or data_changed or tick_fired or avatar_changed or cycle_fired:
             navigation.draw()
             display.update()
+            navigation.note_footer_painted()  # footer is fresh; reset the change-tracking
         elif navigation.edit_flow and getattr(navigation.edit_flow, "animate", None):
             # a live flow animates its own partial regions; "full" asks for a
             # whole-screen pass instead (demo mode changing its step)
@@ -400,5 +432,9 @@ def start(theme, stats_payload):
                 display.update()
         if navigation.animate_battery_if_due():
             # 1 Hz footer-only repaint: charging sweep or critical-battery blink
+            display.update()
+        elif navigation.refresh_footer_if_changed():
+            # footer-only repaint when the WiFi bars / battery level move without
+            # a full redraw (the common case on a static save-mode screen)
             display.update()
         time.sleep_ms(10)

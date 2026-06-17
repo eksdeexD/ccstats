@@ -37,6 +37,7 @@ DEFAULTS = {
     "hidden_screens": [],  # screen ids removed from navigation
     "auto_boot": True,  # PWRON reset launches ccstats (launcher patch)
     "battery_saver_off": False,  # True = full cadences + animation on battery
+    "wifi_indicator": True,  # show the footer WiFi signal glyph left of the battery
     "avatar_cycle_minutes": 0,  # sprite auto-cycle interval; 0 = off
 }
 

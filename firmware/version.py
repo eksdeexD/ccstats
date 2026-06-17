@@ -9,5 +9,6 @@
 # warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 # Firmware version — shown in the splash screen's lower-left corner.
-# Bump on user-visible releases; 0.<milestone>.<patch> until 1.0.
-APP_VERSION = "0.5.0"
+# Bump on user-visible releases (semver MAJOR.MINOR.PATCH). ALWAYS confirm the
+# new number with the user before committing a release — see CLAUDE.md "Versioning".
+APP_VERSION = "1.1.0"

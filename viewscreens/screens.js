@@ -211,6 +211,10 @@ function chrome(P, title, tag){
   // battery (outline + 3 green cells), right side
   const bx=320-6-16, by=230; P.border(bx,by,14,8, C.creamD,1); P.rect(bx+14,by+2,2,4, C.creamD);
   for(let k=0;k<3;k++) P.rect(bx+2+k*3,by+2,2,4, C.green);
+  // wifi signal — 4 rising bars (3 lit), just left of the battery. STATIC mirror of
+  // the badge footer glyph (firmware screen_shared.draw_wifi_icon; live RSSI there).
+  const wbX=bx-5-11, wbBase=by+8;
+  for(let k=0;k<4;k++){ const h=2+k*2; P.rect(wbX+k*3, wbBase-h, 2, h, k<3?C.green:C.creamD); }
   // STATIC footer chrome mirroring the badge (navigation.py draw_footer): A/C arrows
   // either side + the contextual-B label centred. Purely a picture of what the badge
   // shows — /viewscreens never simulates the press (no paging/zoom/edit on the web).

@@ -37,6 +37,7 @@ import screens_tokens
 import screens_trophies
 import settings
 import theme
+import wifi_signal
 from pico_draw import PicoDraw
 from screen_shared import SECTION_LABEL_Y, draw_chrome, draw_section_label
 
@@ -182,6 +183,7 @@ def _display_rows(navigation):
         ("AVATAR LINE 2", avatar_line_text(2), avatar_line_step(2)),
         # the stored key is the OFF-switch; the row reads as the saver itself
         ("BATTERY SAVER", toggle_text("battery_saver_off", inverted=True), toggle_step("battery_saver_off")),
+        ("WIFI INDICATOR", toggle_text("wifi_indicator"), toggle_step("wifi_indicator")),
         ("AUTO BOOT", toggle_text("auto_boot"), toggle_step("auto_boot")),
         ("DEMO MODE", lambda: ">", demo_step),
         ("RESET DEFAULTS", lambda: ">", reset_step),
@@ -737,15 +739,8 @@ def draw_options_avatar(P, stats_payload):
 # ---- WIFI: the real joined network (the web list is a placeholder) ----------
 
 def _signal_bar_count(rssi):
-    if rssi is None:
-        return 0
-    if rssi >= -55:
-        return 4
-    if rssi >= -65:
-        return 3
-    if rssi >= -75:
-        return 2
-    return 1
+    # Shared with the footer signal glyph so the two never disagree on the map.
+    return wifi_signal.bars_for_rssi(rssi)
 
 
 def draw_options_wifi(P, stats_payload):

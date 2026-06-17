@@ -26,6 +26,17 @@ BATTERY_BLINK_MILLISECONDS = 1000
 _BATTERY_X = SCREEN_WIDTH - 6 - 16
 _BATTERY_Y = 230
 
+# WiFi signal glyph: four rising bars sitting just left of the battery icon in
+# the footer. Lit count rides on P.wifi_bars (0..4), refreshed on the battery's
+# ~15 s cadence by navigation (from wifi_signal). Bars rise from the battery's
+# bottom edge so the two glyphs share a baseline; the tallest reaches its top.
+_WIFI_BAR_COUNT = 4
+_WIFI_BAR_WIDTH = 2
+_WIFI_BAR_GAP = 1
+_WIFI_WIDTH = _WIFI_BAR_COUNT * _WIFI_BAR_WIDTH + (_WIFI_BAR_COUNT - 1) * _WIFI_BAR_GAP
+_WIFI_X = _BATTERY_X - 5 - _WIFI_WIDTH  # 5px gap to the battery body
+_WIFI_BASELINE_Y = _BATTERY_Y + 8  # battery body is 8px tall; bars share its base
+
 _offline_dot_pen = None  # fixed black, palette-independent (built lazily)
 
 
@@ -75,16 +86,38 @@ def draw_chrome(P, title, tag=None):
     P.rect(0, FOOTER_Y, SCREEN_WIDTH, SCREEN_HEIGHT - FOOTER_Y, C.title_bar)
     P.rect(6, 232, 4, 4, C.status if P.connection_online else _get_offline_dot_pen())
     P.text(P.clock_text or "--:--", 13, 231, C.text_dark, "tag", letter_spacing=1)
+    draw_wifi_icon(P)
     draw_battery_icon(P)
+
+
+def draw_wifi_icon(P):
+    """The footer WiFi signal glyph: four rising bars left of the battery icon.
+    The lit count (0..4) rides on P.wifi_bars, set by navigation from wifi_signal
+    on the same ~15 s cadence as the battery status (not read per frame). 0 bars
+    means disconnected / no signal: all four draw dim (edge pen), mirroring the
+    empty-battery convention. Drawn by draw_chrome on every full redraw, unless
+    the DISPLAY > WIFI INDICATOR toggle is off (P.wifi_indicator_on)."""
+    if not getattr(P, "wifi_indicator_on", True):
+        return  # toggle off: leave the footer-coloured gap left of the battery
+    C = P.palette
+    lit = getattr(P, "wifi_bars", 0)
+    # erase the glyph footprint (symmetry with draw_battery_icon; harmless on the
+    # full-redraw path, which has already cleared the screen)
+    P.rect(_WIFI_X, _BATTERY_Y, _WIFI_WIDTH, 8, C.title_bar)
+    for bar in range(_WIFI_BAR_COUNT):
+        bar_height = 2 + bar * 2  # 2, 4, 6, 8 — rising left to right
+        bar_x = _WIFI_X + bar * (_WIFI_BAR_WIDTH + _WIFI_BAR_GAP)
+        # lit = status pen; inactive = the battery icon's light grey (text_dark)
+        P.rect(bar_x, _WIFI_BASELINE_Y - bar_height, _WIFI_BAR_WIDTH, bar_height,
+               C.status if bar < lit else C.text_dark)
 
 
 def draw_battery_icon(P):
     """The footer fuel gauge. P carries the gauge state (set by navigation):
-    battery_cells (0..4), battery_critical, battery_static_empty,
-    battery_charging. Drawn whole by draw_chrome, and on its own by
-    navigation's 1 Hz repaint (the critical blink and the charging sweep) — so
-    it repaints just this rect (background first, so an off-frame erases the
-    bars) without a full-screen redraw."""
+    battery_cells (0..4), battery_critical, battery_charging. Drawn whole by
+    draw_chrome, and on its own by navigation's 1 Hz repaint (the critical blink
+    and the charging sweep) — so it repaints just this rect (background first, so
+    an off-frame erases the bars) without a full-screen redraw."""
     C = P.palette
     # erase the icon footprint (body + terminal) to the footer bar colour
     P.rect(_BATTERY_X, _BATTERY_Y, 17, 8, C.title_bar)
@@ -96,11 +129,9 @@ def draw_battery_icon(P):
         # charging sweep: fill 1 -> 2 -> 3 -> 4 -> 1 at a 1 s interval
         cells = (badge.ticks // BATTERY_BLINK_MILLISECONDS) % 4 + 1
     elif getattr(P, "battery_critical", False):
-        if getattr(P, "battery_static_empty", False):
-            cells = 0  # save-mode static: show an empty battery, never blink
-        else:
-            # blink the single remaining bar on/off at a 1 s interval
-            cells = 1 if (badge.ticks // BATTERY_BLINK_MILLISECONDS) % 2 == 0 else 0
+        # blink the single remaining bar on/off at a 1 s interval (navigation's
+        # animate_battery_if_due drives the repaint, on battery saver included)
+        cells = 1 if (badge.ticks // BATTERY_BLINK_MILLISECONDS) % 2 == 0 else 0
     for cell in range(cells):
         P.rect(_BATTERY_X + 2 + cell * 3, _BATTERY_Y + 2, 2, 4, C.status)
 
