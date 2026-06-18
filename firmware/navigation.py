@@ -72,6 +72,7 @@ class Navigation:
         # repaints the WiFi/battery glyphs when they move without a full redraw
         self._footer_wifi_drawn = None
         self._footer_battery_drawn = None
+        self._footer_charging_drawn = False
         self.painter.clock_text = feed_clock_text(stats_payload)
         saved_sprite = settings.get("sprite_name")
         if saved_sprite in avatar_frames.SPRITE_ORDER:  # stale names fall back to the default
@@ -310,12 +311,19 @@ class Navigation:
                          letter_spacing=1, align="c")
         self._last_battery_blink_phase = badge.ticks // BATTERY_BLINK_MILLISECONDS
 
+    def _charging_active(self):
+        """Whether the charging sweep should show: genuinely charging AND not
+        yet full. The charger keeps reporting "charging" even at a full 4.22 V
+        cell (is_charging() never clears for us), so we drop the sweep once the
+        smoothed voltage says full and let the static level bars stand in."""
+        return badge.is_charging() and not battery_gauge.charged_full()
+
     def _set_battery_painter(self, painter):
         painter.wifi_bars = wifi_signal.bars()
         painter.wifi_indicator_on = settings.get("wifi_indicator")
         painter.battery_cells = battery_gauge.cells()
         painter.battery_critical = battery_gauge.critical()
-        painter.battery_charging = badge.is_charging()
+        painter.battery_charging = self._charging_active()
 
     def _footer_wifi_value(self):
         # None when the indicator is off, so its (still-sampling) RSSI can't drive
@@ -327,6 +335,7 @@ class Navigation:
         change-gated footer refresh below doesn't immediately re-fire."""
         self._footer_wifi_drawn = self._footer_wifi_value()
         self._footer_battery_drawn = battery_gauge.cells()
+        self._footer_charging_drawn = self._charging_active()
 
     def refresh_footer_if_changed(self):
         """Repaint just the footer WiFi + battery icons the moment their cached
@@ -339,7 +348,8 @@ class Navigation:
         if self.edit_flow:
             return False  # a flow owns the whole screen; its own animate() repaints
         if (self._footer_wifi_value() == self._footer_wifi_drawn
-                and battery_gauge.cells() == self._footer_battery_drawn):
+                and battery_gauge.cells() == self._footer_battery_drawn
+                and self._charging_active() == self._footer_charging_drawn):
             return False
         self._set_battery_painter(self.painter)
         screen_shared.draw_wifi_icon(self.painter)
@@ -356,7 +366,7 @@ class Navigation:
         animate. Returns True when it drew (the caller then runs display.update())."""
         if self.edit_flow:
             return False  # a flow owns the screen; its own animate() repaints
-        animate = badge.is_charging() or battery_gauge.critical()
+        animate = self._charging_active() or battery_gauge.critical()
         if not animate:
             return False
         phase = badge.ticks // BATTERY_BLINK_MILLISECONDS
