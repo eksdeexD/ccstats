@@ -162,3 +162,32 @@ seat's session memory, not here.)
   `feeds.FeedScheduler` — it also dedupes byte-identical responses (no
   parse, no redraw) and backs off 5→60 s after errors so a dead network
   is not hammered with handshake attempts.
+
+## Power & battery
+
+- **`badge.is_charging()` never reports "charge complete" on this hardware.**
+  It returns `VBUS_DETECT and not CHARGE_STAT` — i.e. USB present *and* the
+  charger's STAT line low. In practice the charger keeps STAT low (asserting
+  "charging") even at a genuinely full cell: verified by charging the badge
+  overnight powered **off**, then reading it — it rested at **4.22 V** (a full
+  Li-ion) yet `is_charging()` was still `True`. So there is no "done" edge to
+  latch a full state on, and a naive `is_charging()`-driven charging icon
+  animates forever while plugged in. (`CHARGE_STAT` itself reads fine — `0` =
+  charging, matching the platform's manufacturing self-test; the charger just
+  never signals termination to us, and the badge is normally powered-on under
+  load while plugged in, which masks any current taper.)
+- **Workaround: gate "full" on voltage, not on the charger.** We treat the cell
+  as full once the smoothed (median) battery voltage is ≥ **4.05 V** while on
+  USB, and show a static full icon instead of the sweep (`battery_gauge.charged_full()`
+  + `Navigation._charging_active()`). 4.05 V is effectively 100% for a Li-ion
+  and sits well below the ~4.2 V charged rest voltage, so it triggers reliably
+  without tripping mid-charge.
+- **Voltage is a poor charge-level proxy *while charging*** (unlike on
+  discharge). A Li-ion charge is CC→CV: voltage climbs to ~4.2 V fairly fast,
+  then holds at ~4.2 V while current tapers and the last big chunk of capacity
+  goes in. So a voltage-based "how full while charging" bar saturates early and
+  misleads — the honest progress signal in CV is current taper, which this
+  hardware doesn't expose. Keep charge-state UI coarse (charging vs full).
+- The discharge fuel gauge (`battery_gauge`) is deliberately separate and
+  calibrated for voltage *under load* — see the module header for why the stock
+  sigmoid `battery_level()` is useless as a gauge.

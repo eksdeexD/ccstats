@@ -45,6 +45,16 @@ HYSTERESIS = 0.03  # must clear a boundary by this much to climb back up a bar
 CUTOFF_VOLTS = 3.20
 CUTOFF_MIN_SAMPLES = 3  # never power off on a single cold-boot reading
 
+# "Full enough to stop the charging sweep." The charger keeps asserting
+# "charging" (CHARGE_STAT low -> badge.is_charging() True) even at a genuinely
+# full cell — verified by reading the badge after a full overnight charge while
+# powered off: it rested at 4.22 V yet is_charging() was still True. So the
+# hardware never gives us a "charge complete" edge to act on. Instead we call
+# the cell full once the smoothed voltage reaches this while on USB: 4.05 V is
+# effectively 100% for a Li-ion and sits well below the ~4.2 V charged rest
+# voltage, so it triggers reliably without tripping mid-charge.
+FULL_ON_USB_VOLTS = 4.05
+
 _SAMPLE_MILLISECONDS = 15000  # ADC read cadence
 _WINDOW = 8  # samples kept for the median (~2 min at 15 s)
 
@@ -119,6 +129,15 @@ def critical():
 def voltage():
     """The smoothed (median) voltage, or None before priming."""
     return _median(_samples) if _samples else None
+
+
+def charged_full():
+    """True when the smoothed voltage says the cell is effectively full. The
+    caller only consults this while charging (so USB is already guaranteed); it
+    lets us show a static full icon instead of the endless charging sweep, since
+    the charger never reports 'done' to us. False before priming."""
+    v = voltage()
+    return v is not None and v >= FULL_ON_USB_VOLTS
 
 
 def should_power_off(on_battery):
