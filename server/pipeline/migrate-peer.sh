@@ -150,8 +150,18 @@ if ( set -e
         fi
     fi
 
-    # 6) state the collectors must write moves to ccollector (missing files are fine)
+    # 6) state the collectors must write moves to ccollector (missing files are fine).
+    #    /opt/claude-stats itself becomes group-writable for ccollector (same 2775
+    #    shape as main): usage-monitor.py and live-monitor.py write their state
+    #    atomically (tmp + rename), which needs create permission in the directory.
     chown ccollector:ccollector "$OPT/usage-poll-state.json" "$OPT/live-status.json" 2>/dev/null || true
+    chown root:ccollector "$OPT"; chmod 2775 "$OPT"
+    # pre-create the unit logs ccollector-owned: systemd's StandardOutput=append:
+    # creates missing files as root, which the `su ccollector` logrotate rule
+    # could then neither truncate nor recreate.
+    for lf in fragment.log live-monitor.log; do
+        if [ ! -f "$LOGDIR/$lf" ]; then install -m640 -o ccollector -g ccollector /dev/null "$LOGDIR/$lf"; fi
+    done
 
     # 7) logrotate: the shipment log moves to /var/log/ccstats/ (ccollector-owned dir —
     #    logrotate needs `su`; copytruncate as on main). The legacy stanza stays until
