@@ -22,6 +22,15 @@ read access to state. Migration from the pre-1.2.1 root layout is automatic in `
 fallback playbook: `docs/migrate-derootify.md`. (File ACLs were rejected: Claude Code creates its
 files `0600`, and POSIX ACL inheritance masks out inherited read entries on exactly those files.)
 
+**Fragment nodes (peers) are de-rooted the same way since v1.3.0**: the every-minute root cron
+became `ccstats-fragment.timer` running `ship-fragment.sh` as `ccollector` (`CAP_DAC_READ_SEARCH`
+only, same sandbox as main's oneshots), the sftp data key moved from `/root/.ssh` to
+`/var/lib/ccstats/.ssh/ccstats_frag`, a peer live monitor uses the shared de-rooted template
+(+ `CAP_SYS_PTRACE`, `RuntimeDirectory=ccstats` for its ssh ControlPath), and the scope refresher
+runs on peers too. Peers are migrated from the MAIN server by `provision-remote.sh` (any path)
+via `migrate-peer.sh` — verified switch-over, root-mode rollback on failure; `deploy.sh` skips
+peer boxes on purpose. See `docs/remote-fragment.md` § "Privilege model on peers".
+
 ## Parsing rules (from the real session-file corpus)
 - **Real user prompts** (for word/char/prompt counts + hour/weekday/day histograms):
   `type=="user"`, `isSidechain` false, no `toolUseResult`/`sourceToolAssistantUUID`, not `isMeta`,

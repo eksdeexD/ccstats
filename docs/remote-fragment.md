@@ -42,15 +42,45 @@ one prompt). Private keys never move; you copy exactly one key, by paste, once.
 
 ### What it installs
 
-- **On the remote:** `extract.py`, `pricing.json`, `config.json`, and `ship-fragment.sh` in
-  `/opt/claude-stats`; source copies in `/home/ccstats` (mirroring main's edit-here/deploy-to-/opt
-  split); a data key in `/root/.ssh/ccstats_frag`; main's host key pre-trusted; and a **root cron**
-  (`/etc/cron.d/ccstats-fragment`) that runs `ship-fragment.sh` every minute (fragment + sftp upload).
+- **On the remote:** `extract.py`, `pricing.json`, `usage-monitor.py`, `config.json`, and
+  `ship-fragment.sh` in `/opt/claude-stats`; source copies in `/home/ccstats` (mirroring main's
+  edit-here/deploy-to-/opt split); main's host key pre-trusted. Shipping runs **de-rooted** (see
+  below): the every-minute `ccstats-fragment.timer` runs `ship-fragment.sh` as the unprivileged
+  `ccollector` user, with the data key at `/var/lib/ccstats/.ssh/ccstats_frag`. On boxes where the
+  migration declines (systemd < 240) the legacy **root cron** (`/etc/cron.d/ccstats-fragment`, key
+  in `/root/.ssh`) is kept instead — all scripts stay root-compatible.
   No GitHub access is needed on the remote — code is copied from main.
 - **On main (first run, idempotent):** a locked-down `statsuser`, the writable `fragments/` dir, the
   remote's upload key, and a registry entry in `/opt/claude-stats/remotes.d/<label>.conf`.
 
 It finishes by running one upload immediately and confirming `fragments/<label>.json` arrived.
+
+### Privilege model on peers (since v1.3.0)
+
+Peers mirror main's v1.2.1 de-root. Every provisioning path (fresh add, `--update`,
+`--enable-live`) ships a small kit and runs `migrate-peer.sh` on the remote — idempotent and
+fail-safe: the root cron is only retired after **one shipment has been verified through the new
+unit** (the ship log's `OK fragment shipped` marker), and any failure restores it, leaving the
+peer working in root mode with a notice. What changes on a migrated peer:
+
+- `ship-fragment.sh` runs from **`ccstats-fragment.timer`** (every minute) as **`ccollector`**
+  with `CAP_DAC_READ_SEARCH` only, sandboxed like main's oneshots (`ProtectSystem=strict`,
+  `ProtectHome=tmpfs` + scope-refresher drop-ins, `NoNewPrivileges`, `PrivateTmp` — safe because
+  the fragment tmp files and the sftp live inside the same unit).
+- The sftp **data key moves** to `/var/lib/ccstats/.ssh/ccstats_frag` (ccollector, 0600) with a
+  seeded `known_hosts`; `/root/.ssh/ccstats_frag*` is removed (archived in the dated quarantine
+  dir under `/opt/claude-stats/backups/`, next to the retired cron — one `mv` from rollback).
+- The live monitor (if enabled) is re-rendered onto the de-rooted template — `ccollector` +
+  `CAP_SYS_PTRACE`, per-box `ExecStart` ship args preserved, `RuntimeDirectory=ccstats` for the
+  shipper's ssh ControlPath.
+- The **scope refresher** (path watch on `/home` + 10-min sweep) is installed too, so new users
+  on a peer are picked up automatically — zero manual steps.
+- The shipment log moves to **`/var/log/ccstats/fragment.log`** (logrotate policy updated; the
+  old `/var/log/ccstats-fragment.log` is still rotated until it ages out).
+
+Data formats and the upload contract are unchanged — a v1.2.1 main accepts a v1.3.0 peer's
+fragments and vice versa. Peers are migrated **only** via `provision-remote.sh`; `deploy.sh`
+deliberately skips boxes with a `ship-fragment.sh` cron.
 
 ## Updating a server (after a code change)
 
@@ -60,8 +90,10 @@ When you change the pipeline (e.g. tuning idle/working detection), redeploy it t
 sudo ./server/pipeline/provision-remote.sh --update all      # or: --update <label>
 ```
 
-It re-pushes `extract.py` + `pricing.json` to each registered remote and (if the live channel is
-enabled for it) restarts the monitor. You enter each remote's sudo password once. The registry
+It re-pushes `extract.py` + `pricing.json` + `usage-monitor.py` + `ship-fragment.sh` to each
+registered remote and (if the live channel is enabled for it) restarts the monitor. It also runs
+the peer de-root migration (no-op re-verify on already-migrated peers, full migration on legacy
+root-cron ones). You enter each remote's sudo password once. The registry
 (`/opt/claude-stats/remotes.d/`) is the source of truth for which remotes exist.
 
 ## How `statsuser` is locked down

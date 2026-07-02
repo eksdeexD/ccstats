@@ -32,8 +32,10 @@ layout):
    commands** in `server/systemd/*.service.template` — hand-customized flags (a
    different webroot, `--home-glob`, extra options) must be carried over.
 4. Is this a **fragment node** (peer)? If `/etc/cron.d/*` references
-   `ship-fragment.sh`, STOP: peers stay root-mode in this release and are managed
-   from the MAIN server (`provision-remote.sh`). Nothing to do here.
+   `ship-fragment.sh`, STOP: peers are migrated from the MAIN server, not with
+   this playbook — run `sudo ./server/pipeline/provision-remote.sh --update
+   <label>` there (v1.3.0+; it ships and runs `migrate-peer.sh` on the peer,
+   idempotently and fail-safe). Nothing to do on the peer itself.
 5. Who is the **operator** — the non-root user owning this repo checkout (if any)?
    They will own the code + secrets and join the `ccollector` group.
 
@@ -153,5 +155,9 @@ code — rollback does not require downgrading.
 - **New users?** Picked up automatically: the collectors glob `/home/*`, and the
   scope refresher rebinds `~/.claude` dirs when the user set changes (path watch on
   `/home` + a 10-minute sweep). No manual step.
-- **Peers/fragment nodes?** Unchanged this release — still root cron + sftp. Their
-  de-root ships in a later release via `provision-remote.sh`.
+- **Peers/fragment nodes?** De-rooted since v1.3.0, but via a different path: the
+  MAIN server's `provision-remote.sh` (fresh provision, `--update`, `--enable-live`)
+  ships and runs `migrate-peer.sh` on the peer — collector user, data key moved to
+  `/var/lib/ccstats/.ssh`, root cron → `ccstats-fragment.timer`, verified switch-over
+  with root-mode rollback. Never migrate a peer with this playbook or `deploy.sh`;
+  see `docs/remote-fragment.md` § "Privilege model on peers".

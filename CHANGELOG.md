@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.3.0 — 2026-07-03
+
+**Fragment nodes (peers) no longer run as root** — the peer half of the v1.2.1 de-root:
+
+- The every-minute root cron (`/etc/cron.d/ccstats-fragment`) becomes `ccstats-fragment.timer`
+  + `.service`, running `ship-fragment.sh` as the unprivileged `ccollector` user with
+  `CAP_DAC_READ_SEARCH` only, sandboxed exactly like main's oneshots (`ProtectSystem=strict`,
+  `ProtectHome=tmpfs` + scope-refresher drop-ins, `NoNewPrivileges`, `PrivateTmp` — safe: the
+  fragment/limits tmp files and the sftp upload share the unit). Log:
+  `/var/log/ccstats/fragment.log` (logrotate updated; the legacy log rotates until it ages out).
+- The sftp **data key moves out of `/root/.ssh`** to `/var/lib/ccstats/.ssh/ccstats_frag`
+  (ccollector, 0600, seeded `known_hosts`). `ship-fragment.sh` takes the key path as an optional
+  3rd arg / `CCSTATS_FRAG_KEY` env with per-uid defaults, so it stays fully root-compatible on
+  un-migrated peers.
+- A peer live monitor is re-rendered onto the shared de-rooted template (`ccollector` +
+  `CAP_SYS_PTRACE`, per-box `ExecStart` ship args preserved, `RuntimeDirectory=ccstats` for the
+  shipper's ssh ControlPath). The scope refresher now runs on peers too — new users are picked
+  up automatically, zero manual steps.
+- **Migration is automatic from the MAIN server**: every `provision-remote.sh` path (fresh
+  provision, `--update`, `--enable-live`) ships a kit and runs the new `migrate-peer.sh` on the
+  peer — idempotent and fail-safe: the root cron is retired only after one shipment is verified
+  through the new unit (explicit `OK ... shipped` markers in the ship log), everything displaced
+  is quarantined in a dated dir (one `mv` from rollback), and any failure restores root mode
+  with a clear notice. systemd < 240 peers decline and stay root-mode (same threshold as main).
+  A hand-added `ship-limits.sh` cron (the pre-1.3.0 cross-server limits stopgap) is quarantined
+  too — `ship-fragment.sh` has shipped the limits reading every minute since the gap was closed.
+- Data formats and the upload contract are unchanged: a v1.2.1 main accepts a v1.3.0 peer and
+  vice versa. `deploy.sh` still deliberately skips peer boxes (they migrate via
+  `provision-remote.sh`, never via `deploy.sh`).
+
 ## 1.2.1 — 2026-07-02
 
 Firmware and server now share **one project version** (this file + `firmware/version.py`
