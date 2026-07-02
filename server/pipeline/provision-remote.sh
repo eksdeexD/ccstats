@@ -23,6 +23,13 @@
 # it; the remote then appears in the JSON's meta.servers and all totals. The remote gets NO
 # /view, monitor, nginx, token, or ledger — pure data source.
 #
+# Since v1.3.0 peers are DE-ROOTED like main: every path here (fresh provision, --update,
+# --enable-live) ships a small kit and runs migrate-peer.sh on the remote — idempotent and
+# fail-safe (on failure the root cron is restored and the peer keeps working in root mode;
+# systemd < 240 boxes decline with a notice and stay root-mode). Shipping then runs as the
+# unprivileged 'ccollector' user (ccstats-fragment.timer, CAP_DAC_READ_SEARCH, sandboxed),
+# with the data key at /var/lib/ccstats/.ssh/ccstats_frag instead of /root/.ssh.
+#
 # ── Two SSH directions (the whole model) ─────────────────────────────────────────────────────────
 #   1. PROVISIONING  (main -> remote, at setup/update): the script logs into the remote AS YOUR OWN
 #      sudo user (e.g. you@host). You paste ONE line on the remote that just adds this script's key to
@@ -73,6 +80,20 @@ ensure_main_side() {  # idempotent main-server prerequisites
   install -d -m700 "$KEYDIR" "$REG"
 }
 
+# v1.3.0 peer de-root kit: migrate-peer.sh + everything it installs on the peer.
+# Staged as one tarball; the remote-side scripts extract it to /tmp/ccstats-peer-kit/
+# (preserving the pipeline/ + systemd/ layout migrate-peer.sh expects) and run it.
+PEER_KIT_FILES="pipeline/migrate-peer.sh pipeline/refresh-scope.sh pipeline/ship-fragment.sh
+  systemd/ccstats-fragment.service.template systemd/ccstats-fragment.timer.template
+  systemd/ccstats-scope-refresh.service.template systemd/ccstats-scope-refresh.path.template
+  systemd/ccstats-scope-refresh.timer.template systemd/claude-live-monitor.service.template"
+stage_peer_kit() { # prints the local tarball path
+  local kit; kit="$(mktemp)"
+  # shellcheck disable=SC2086 — the list is ours and space-separated on purpose
+  tar -C "$REPO" -czf "$kit" $PEER_KIT_FILES
+  echo "$kit"
+}
+
 # ── --list ─────────────────────────────────────────────────────────────────────────────────────
 if [ "${1:-}" = --list ]; then
   [ -d "$REG" ] || { echo "no remotes provisioned yet"; exit 0; }
@@ -106,6 +127,9 @@ if [ "${1:-}" = --update ]; then
       $SCPK "$REPO/monitor/usage-monitor.py" "$user@$host:/tmp/ccstats-usagemon.py" >/dev/null
       $SCPK "$REPO/pipeline/ship-fragment.sh" "$user@$host:/tmp/ccstats-shipfrag.sh" >/dev/null
       [ "${live:-0}" = 1 ] && $SCPK "$REPO/monitor/live-monitor.py" "$user@$host:/tmp/ccstats-livemon.py" >/dev/null
+      KIT_LOCAL="$(stage_peer_kit)"
+      $SCPK "$KIT_LOCAL" "$user@$host:/tmp/ccstats-peer-kit.tgz" >/dev/null
+      rm -f "$KIT_LOCAL"
       UPD_LOCAL="$(mktemp)"
       cat > "$UPD_LOCAL" <<'UPD'
 set -eu
@@ -126,12 +150,19 @@ if [ "${LIVE:-0}" = 1 ] && [ -f /tmp/ccstats-livemon.py ]; then
   rm -f /tmp/ccstats-livemon.py
   sudo systemctl restart claude-live-monitor 2>/dev/null || true
 fi
+# v1.3.0: de-root this peer (idempotent; fail-safe — on failure the root cron is
+# restored and the box keeps shipping in root mode; re-runs on a migrated peer
+# just refresh the units and verify a shipment)
+rm -rf /tmp/ccstats-peer-kit && mkdir -p /tmp/ccstats-peer-kit
+tar -xzf /tmp/ccstats-peer-kit.tgz -C /tmp/ccstats-peer-kit
+sudo bash /tmp/ccstats-peer-kit/pipeline/migrate-peer.sh "$LABEL" "$STATSUSER@$MAIN_DOMAIN"
+rm -rf /tmp/ccstats-peer-kit /tmp/ccstats-peer-kit.tgz
 echo CCSTATS_UPDATE_DONE
 UPD
       # scp + `bash <file>` (NOT heredoc on stdin) so `ssh -t` keeps a real terminal for sudo
       $SCPK "$UPD_LOCAL" "$user@$host:/tmp/ccstats-update.sh" >/dev/null
       rm -f "$UPD_LOCAL"
-      $SSHK -t "$user@$host" "LIVE='${live:-0}' bash /tmp/ccstats-update.sh"
+      $SSHK -t "$user@$host" "LIVE='${live:-0}' LABEL='$label' STATSUSER='$STATSUSER' MAIN_DOMAIN='$main_domain' bash /tmp/ccstats-update.sh"
       $SSHK "$user@$host" 'rm -f /tmp/ccstats-update.sh' 2>/dev/null || true
       ok "updated '$label'"
     ) || warn "update failed for $(basename "$f" .conf) — see above"
@@ -196,6 +227,9 @@ UNIT
   # ---- remote side: live-monitor + shipper unit (reuses the sftp data key) ----
   b "2. Remote side ($user@$host) — one sudo password"
   $SCPK "$REPO/monitor/live-monitor.py" "$user@$host:/tmp/ccstats-livemon.py" >/dev/null
+  KIT_LOCAL="$(stage_peer_kit)"
+  $SCPK "$KIT_LOCAL" "$user@$host:/tmp/ccstats-peer-kit.tgz" >/dev/null
+  rm -f "$KIT_LOCAL"
   EL_LOCAL="$(mktemp)"
   cat > "$EL_LOCAL" <<'ELR'
 set -eu
@@ -203,6 +237,11 @@ sudo -v
 sudo install -m755 /tmp/ccstats-livemon.py /opt/claude-stats/live-monitor.py
 sudo install -m644 -o ccstats -g ccstats /tmp/ccstats-livemon.py /home/ccstats/live-monitor.py 2>/dev/null || true
 rm -f /tmp/ccstats-livemon.py
+# ship key: the collector's copy on a de-rooted peer, /root's on a legacy one.
+# The unit is written root-shaped either way; migrate-peer.sh below immediately
+# re-renders it onto the de-rooted template (preserving this ExecStart).
+KEY=/root/.ssh/ccstats_frag
+if sudo test -f /var/lib/ccstats/.ssh/ccstats_frag; then KEY=/var/lib/ccstats/.ssh/ccstats_frag; fi
 sudo tee /etc/systemd/system/claude-live-monitor.service >/dev/null <<UNIT
 [Unit]
 Description=Claude Code live activity monitor + shipper ($LABEL → main)
@@ -211,7 +250,7 @@ After=network.target
 [Service]
 Type=simple
 RuntimeDirectory=ccstats
-ExecStart=/usr/bin/python3 /opt/claude-stats/live-monitor.py --server $LABEL --output /opt/claude-stats/live-status.json --no-chown --ship-dest $STATSUSER@$MAIN_DOMAIN --ship-key /root/.ssh/ccstats_frag --ship-remote-path /var/www/stats/live-remote --ship-grace 1800 --ship-control /run/ccstats/cm-live --verbose
+ExecStart=/usr/bin/python3 /opt/claude-stats/live-monitor.py --server $LABEL --output /opt/claude-stats/live-status.json --no-chown --ship-dest $STATSUSER@$MAIN_DOMAIN --ship-key $KEY --ship-remote-path /var/www/stats/live-remote --ship-grace 1800 --ship-control /run/ccstats/cm-live --verbose
 Restart=always
 RestartSec=3
 User=root
@@ -221,6 +260,12 @@ WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now claude-live-monitor
+# v1.3.0: de-root (or re-verify) this peer — converts the unit above to the
+# sandboxed ccollector template; idempotent and fail-safe (root mode kept on failure)
+rm -rf /tmp/ccstats-peer-kit && mkdir -p /tmp/ccstats-peer-kit
+tar -xzf /tmp/ccstats-peer-kit.tgz -C /tmp/ccstats-peer-kit
+sudo bash /tmp/ccstats-peer-kit/pipeline/migrate-peer.sh "$LABEL" "$STATSUSER@$MAIN_DOMAIN"
+rm -rf /tmp/ccstats-peer-kit /tmp/ccstats-peer-kit.tgz
 echo CCSTATS_LIVE_DONE
 ELR
   $SCPK "$EL_LOCAL" "$user@$host:/tmp/ccstats-enable-live.sh" >/dev/null
@@ -239,7 +284,7 @@ ELR
   b "✓ Live channel enabled for '$label'."
   info "Status ships up only while a session is active (tunnel drops ~30 min after the last one)."
   info "Watch: the /livetest page should show '$label' within a few seconds of activity there."
-  info "Remote monitor log: ssh $user@$host 'sudo journalctl -u claude-live-monitor -f'"
+  info "Remote monitor log: ssh $user@$host 'sudo tail -f /var/log/ccstats/live-monitor.log' (journalctl -u claude-live-monitor on a root-mode peer)"
   info "⚠ Verify the process matcher on the remote (how 'claude' appears in /proc) if it never shows working."
   exit 0
 fi
@@ -277,7 +322,8 @@ b "Plan"
 info "login (provision): $RUSER@$RHOST   (sudo password asked ONCE; no passwordless sudo configured)"
 info "label / tz        : $LABEL / $TZ_NAME"
 info "data flow         : $RHOST  --every-min sftp-->  $MAIN_DOMAIN:{fragments,limits-remote}/$LABEL.json"
-info "remote gets       : /opt/claude-stats/{extract.py,pricing.json,usage-monitor.py,config.json,ship-fragment.sh} + root cron + logrotate; source copies in /home/ccstats"
+info "remote gets       : /opt/claude-stats/{extract.py,pricing.json,usage-monitor.py,config.json,ship-fragment.sh} + logrotate; source copies in /home/ccstats"
+info "                    then de-rooted: 'ccollector' user + ccstats-fragment.timer (root cron only as fallback)"
 echo
 read -rp "Proceed? [y/N] " yn; [[ "${yn:-}" =~ ^[Yy]$ ]] || die "aborted"
 
@@ -317,6 +363,9 @@ $SCPK "$REPO/pipeline/extract.py"      "$TARGET:/tmp/ccstats-extract.py"   >/dev
 $SCPK "$REPO/pipeline/pricing.json"    "$TARGET:/tmp/ccstats-pricing.json" >/dev/null
 $SCPK "$REPO/monitor/usage-monitor.py" "$TARGET:/tmp/ccstats-usagemon.py"  >/dev/null
 $SCPK "$REPO/pipeline/ship-fragment.sh" "$TARGET:/tmp/ccstats-shipfrag.sh" >/dev/null
+KIT_LOCAL="$(stage_peer_kit)"
+$SCPK "$KIT_LOCAL" "$TARGET:/tmp/ccstats-peer-kit.tgz" >/dev/null
+rm -f "$KIT_LOCAL"
 DATA_PUB="$($SSHK "$TARGET" "test -f ~/.ccstats_frag || ssh-keygen -t ed25519 -N '' -C 'ccstats-fragment@$LABEL' -f ~/.ccstats_frag >/dev/null; cat ~/.ccstats_frag.pub")"
 [ -n "$DATA_PUB" ] || die "failed to generate/read the remote data key"
 ok "data key ready (private stays on the remote)"
@@ -393,10 +442,16 @@ else
 echo "  WARN /etc/logrotate.d not found — install 'logrotate' or /var/log/ccstats-fragment.log will grow unbounded"
 fi
 rm -f /tmp/ccstats-extract.py /tmp/ccstats-pricing.json /tmp/ccstats-usagemon.py /tmp/ccstats-shipfrag.sh
-# smoke test now
+# smoke test now (root mode — proves code + key + reachability before the de-root)
 sudo /opt/claude-stats/ship-fragment.sh "$LABEL" "$STATSUSER@$MAIN_DOMAIN"
 # the private data key now lives only in /root/.ssh — drop the staging copy from $HOME
 rm -f "$HOME/.ccstats_frag" "$HOME/.ccstats_frag.pub"
+# v1.3.0: de-root the peer (idempotent, fail-safe — the root cron above keeps
+# working if the migration declines/fails, e.g. on systemd < 240)
+rm -rf /tmp/ccstats-peer-kit && mkdir -p /tmp/ccstats-peer-kit
+tar -xzf /tmp/ccstats-peer-kit.tgz -C /tmp/ccstats-peer-kit
+sudo bash /tmp/ccstats-peer-kit/pipeline/migrate-peer.sh "$LABEL" "$STATSUSER@$MAIN_DOMAIN"
+rm -rf /tmp/ccstats-peer-kit /tmp/ccstats-peer-kit.tgz
 echo CCSTATS_SETUP_DONE
 REMOTE
 $SCPK "$SETUP_LOCAL" "$TARGET:/tmp/ccstats-setup.sh" >/dev/null
@@ -437,4 +492,5 @@ info "Stats fragment + limits reading ship every minute; --mode full folds stats
 info "  MAIN's usage-monitor --merge-dir serves this box's limits whenever it has the active session."
 info "Update its code later:   sudo $0 --update $LABEL    (or --update all)"
 info "List remotes:            sudo $0 --list"
-info "Remote log:              ssh $TARGET 'sudo tail -f /var/log/ccstats-fragment.log'"
+info "Remote log:              ssh $TARGET 'sudo tail -f /var/log/ccstats/fragment.log'"
+info "  (root-mode fallback peers log to /var/log/ccstats-fragment.log instead)"

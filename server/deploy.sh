@@ -221,9 +221,12 @@ derootify() {
     if ! [ "${sdver:-0}" -ge 240 ] 2>/dev/null; then
         echo "de-root: skipped — systemd '$sdver' too old or unparseable (need >= 240)"; print_fallback_banner; return 0
     fi
+    # peer guard: fragment nodes migrate via provision-remote.sh (migrate-peer.sh,
+    # v1.3.0), never via deploy.sh — a peer with the root cron still in place gets
+    # its de-root from the MAIN server, and a migrated peer has no cron to match.
     if grep -rqs 'ship-fragment\.sh' /etc/cron.d/ 2>/dev/null; then
-        echo "de-root: skipped — this is a fragment node (peer). Peers stay root-mode in this"
-        echo "         release and are managed from the MAIN server via provision-remote.sh."
+        echo "de-root: skipped — this is a fragment node (peer). Peers are migrated from the"
+        echo "         MAIN server:  sudo ./server/pipeline/provision-remote.sh --update <label>"
         return 0
     fi
 
