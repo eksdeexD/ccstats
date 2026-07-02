@@ -8,16 +8,44 @@
 # This program is distributed WITHOUT ANY WARRANTY; without even the implied
 # warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
+# De-rooted since v1.2.1: runs as the unprivileged 'ccollector' user.
+# CAP_DAC_READ_SEARCH  = read users' 0600 session files (read-only DAC bypass).
+# CAP_SYS_PTRACE       = read /proc/<pid>/io (0400) — drives the working/idle
+#                        signal; also lets the spawned `ss` map sockets to pids.
+# ProtectHome=tmpfs hides /home; the ccstats-refresh-scope drop-in
+# (ccstats-scope.conf) bind-mounts each user's ~/.claude back in read-only.
+
 [Unit]
 Description=Claude Code live activity monitor
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/claude-stats/live-monitor.py --verbose
+ExecStart=/usr/bin/python3 @OPT@/live-monitor.py --verbose
 Restart=always
 RestartSec=3
-User=root
+User=ccollector
+Group=ccollector
+UMask=0022
+WorkingDirectory=@OPT@
+StandardOutput=append:/var/log/ccstats/live-monitor.log
+StandardError=append:/var/log/ccstats/live-monitor.log
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+ProtectSystem=strict
+ProtectHome=tmpfs
+ReadWritePaths=@OPT@ @WEB@ /var/log/ccstats
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target

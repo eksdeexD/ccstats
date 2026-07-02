@@ -558,7 +558,7 @@ def open_ledger(path):
         rec_id TEXT PRIMARY KEY, owner TEXT)""")
     con.commit()
     try:
-        os.chmod(path, 0o600)  # ledger holds per-session usage detail — keep it root-only (its dir is 0755)
+        os.chmod(path, 0o640)  # ledger holds per-session usage detail — owner (collector) + operator group only
     except OSError:
         pass
     return con
@@ -1474,7 +1474,7 @@ def snapshot_backup(ledger, bottleneck_db, config_path, backups_dir):
     os.makedirs(dest, exist_ok=True)
     for d in (backups_dir, dest):
         try:
-            os.chmod(d, 0o700)  # root-only: snapshots hold token copies
+            os.chmod(d, 0o750)  # collector + operator group only: snapshots hold token copies
         except OSError:
             pass
     backed = []
@@ -1492,7 +1492,7 @@ def snapshot_backup(ledger, bottleneck_db, config_path, backups_dir):
             try:
                 d = os.path.join(dest, os.path.basename(src))
                 shutil.copy2(src, d)
-                os.chmod(d, 0o600)  # config/tokens are secrets — keep them locked down
+                os.chmod(d, 0o640)  # config/tokens are secrets — collector + operator group only
                 backed.append(os.path.basename(src))
             except OSError as e:
                 warn("backup of %s failed (%s)" % (src, e))
@@ -1529,7 +1529,7 @@ def run_full(args, generated_at):
         try:
             shutil.copy2(args.ledger, args.ledger + ".bak")  # cheap rolling one-step undo
             try:
-                os.chmod(args.ledger + ".bak", 0o600)  # the .bak holds the same detail — lock it down too
+                os.chmod(args.ledger + ".bak", 0o640)  # the .bak holds the same detail — same lockdown as the ledger
             except OSError:
                 pass
         except OSError as e:

@@ -1,0 +1,11 @@
+# ccstats — timer for ccstats-usage.service (replaces the 2-min root cron).
+[Unit]
+Description=ccstats — poll usage limits every 2 minutes
+
+[Timer]
+OnCalendar=*:0/2
+AccuracySec=15s
+Persistent=no
+
+[Install]
+WantedBy=timers.target

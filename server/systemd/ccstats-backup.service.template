@@ -8,25 +8,22 @@
 # This program is distributed WITHOUT ANY WARRANTY; without even the implied
 # warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-# De-rooted since v1.2.1: runs as 'ccollector' with CAP_DAC_READ_SEARCH only
-# (reads users' 0600 ~/.claude/sessions files; /proc/<pid>/stat is world-readable).
-# ProtectHome=tmpfs + the ccstats-refresh-scope drop-in expose only ~/.claude dirs.
+# On-demand restore-point snapshot (consistent SQLite online backup + config/
+# token copies). Triggered by deploy.sh before code updates — including
+# non-root deploys, which start it via scoped sudo. No timer by design.
 
 [Unit]
-Description=Claude Code durable HUMAN BOTTLENECK time accumulator
-After=network.target
+Description=ccstats — take a timestamped restore-point snapshot
 
 [Service]
-Type=simple
-ExecStart=/usr/bin/python3 @OPT@/bottleneck-monitor.py
-Restart=always
-RestartSec=5
+Type=oneshot
+ExecStart=/usr/bin/python3 @OPT@/extract.py --mode backup --ledger @OPT@/ledger.db --bottleneck-db @OPT@/bottleneck.db --config @OPT@/config.json --backups-dir @OPT@/backups
 User=ccollector
 Group=ccollector
 UMask=0022
 WorkingDirectory=@OPT@
-StandardOutput=append:/var/log/ccstats/bottleneck-monitor.log
-StandardError=append:/var/log/ccstats/bottleneck-monitor.log
+StandardOutput=append:/var/log/ccstats/extract.log
+StandardError=append:/var/log/ccstats/extract.log
 NoNewPrivileges=yes
 CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 AmbientCapabilities=CAP_DAC_READ_SEARCH
@@ -42,7 +39,4 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 RestrictNamespaces=yes
 SystemCallArchitectures=native
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-
-[Install]
-WantedBy=multi-user.target
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

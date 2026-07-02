@@ -30,8 +30,8 @@ working / idle / waiting state is read on the server a couple of times a second 
 session's live network traffic to the Claude API together with its transcript — there's nothing to
 instrument in your editor.
 
-The badge does no number-crunching. Behind it, a **Linux server** runs the pipeline on a cron: it
-scrapes your Claude Code session transcripts, computes the stats, and banks them in a durable
+The badge does no number-crunching. Behind it, a **Linux server** runs the pipeline on systemd
+timers: it scrapes your Claude Code session transcripts, computes the stats, and banks them in a durable
 **SQLite ledger** — so your totals stay *all-time* even after Claude Code prunes old transcripts. The
 finished numbers are served as JSON over token-gated HTTPS, and the badge just draws them.
 
@@ -68,12 +68,19 @@ optional physical desk display on top.
 
 The fastest path: clone the repo on the server, open Claude Code in it, and say
 **“read README.md and set it up.”** It investigates the box, generates a token, writes the
-config, builds the ledger, and installs the cron + nginx (+ Let's Encrypt). Full playbook,
-security notes, and the stats catalog are in **[`server/README.md`](server/README.md)**.
+config, builds the ledger, and installs the services/timers + nginx (+ Let's Encrypt). Full
+playbook, security notes, and the stats catalog are in **[`server/README.md`](server/README.md)**.
 It's also possible to use on a local machine with just the web dashboard, or with a Badgeware Tufty over LAN.
 
 Manual update later: `git pull && sudo ./server/deploy.sh` (code only — your config, token, and
 ledger are never touched).
+
+**Least-privilege runtime (v1.2.1):** the pipeline no longer runs as root. Everything runs as a
+dedicated `ccollector` user whose sandboxed systemd units hold just the narrow capabilities needed
+to *read* the `0600` session files (plus `/proc` I/O for the live monitor). Existing installs are
+migrated automatically — and reversibly — by the next `sudo ./server/deploy.sh`; details and a
+step-by-step fallback in **[`docs/migrate-derootify.md`](docs/migrate-derootify.md)**, release
+notes in **[`CHANGELOG.md`](CHANGELOG.md)**.
 
 ## Set up the badge
 

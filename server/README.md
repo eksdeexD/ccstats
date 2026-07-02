@@ -7,7 +7,7 @@ dashboard, a hardware badge, or just curiosity. Five parts (the first is require
 1. **Core pipeline** *(required)* — parses every user's `~/.claude/projects/**` sessions into a
    durable **all-time SQLite ledger** and writes a compact `claude-stats.json` (tokens, cost
    estimate, streaks, per-project breakdown, activity heatmap, time-of-day rhythm — full list in the
-   **[Stats catalog](#stats-catalog)**). Refreshes on a cron. Survives Claude Code's own transcript
+   **[Stats catalog](#stats-catalog)**). Refreshes on a systemd timer. Survives Claude Code's own transcript
    pruning (`cleanupPeriodDays`).
 2. **`/viewscreens` dashboard** *(optional)* — a self-contained retro multi-screen web page (~21 screens
    across 7 categories) rendering the live data (re-themable via one config block); the badge's native
@@ -91,14 +91,16 @@ root. Don't `cd server` — several referenced paths live above it.
    - Write `/opt/claude-stats/config.json` from `config.example.json` (set `timezone`; optionally
      `server`). `chmod 600` it — it can later hold friends' peer tokens.
    - `install -d -m755 -o root -g www-data /var/www/stats /var/www/stats/fragments`.
-   - **Build the ledger + first JSON** (needs root to read other users' `0600` transcripts):
-     `python3 /opt/claude-stats/extract.py --mode full --server <label> --fragments-dir /var/www/stats/fragments --output /var/www/stats/claude-stats.json` then `chown www-data:www-data` the JSON.
-   - **Root cron, every 5 min** (same command + chown) → `/etc/cron.d` or root's crontab. Log to
-     `/var/log/claude-stats.log`.
+   - **Set up the de-rooted runtime + first JSON:** run `sudo ./server/deploy.sh`. Since v1.2.1
+     it creates the unprivileged `ccollector` user, installs the sandboxed units + timers for
+     every component present (`ccstats-extract.timer`, 5-min — no root cron!), installs the
+     scope refresher (automatic new-user pickup), and triggers the first extract, producing
+     `/var/www/stats/claude-stats.json`. Details: `docs/architecture.md` (privilege model) and
+     `docs/migrate-derootify.md` (what it does; manual fallback if it reports a skip/failure).
    - **Log rotation is automatic**: `deploy.sh` installs `/etc/logrotate.d/ccstats`, which rotates
-     `/var/log/claude-stats*.log` (run by the distro's logrotate.timer / cron.daily — `logrotate` is
-     part of the Debian/Ubuntu base). Remotes get their own `/etc/logrotate.d/ccstats-fragment` from
-     the provision script. The systemd monitors log to the journal, which journald already size-caps.
+     `/var/log/ccstats/*.log` (and legacy `/var/log/claude-stats*.log`) via the distro's
+     logrotate.timer / cron.daily — `logrotate` is part of the Debian/Ubuntu base. Remotes get
+     their own `/etc/logrotate.d/ccstats-fragment` from the provision script.
 7. **Serve it** (if chosen): render `server/nginx/stats-site.conf.template` (replace `__DOMAIN__`,
    `__TOKEN__`, `__WEBROOT__`=`/var/www/stats`), **delete the location blocks for features not
    installed**, symlink into `sites-enabled`, `nginx -t`, reload. If a domain:
@@ -121,16 +123,17 @@ root. Don't `cd server` — several referenced paths live above it.
      at the top of `server/monitor/live-monitor.py` so it matches real Claude processes and excludes this
      pipeline's own scripts.
    - Check `/proc` for `hidepid` (in `/proc/mounts`) and CPU core count — note them; the daemon
-     runs as **root** regardless (needs `/proc/[pid]/io`, mode 0400, and to write the JSON).
+     runs as `ccollector` with `CAP_SYS_PTRACE` + `CAP_DAC_READ_SEARCH` (for `/proc/[pid]/io`,
+     mode 0400, and the 0600 session files).
    - Install `server/monitor/live-monitor.py` → `/opt/claude-stats/`; deploy `server/monitor/livetest-index.html`
-     → `/var/www/stats/livetest/index.html` (`www-data`); install
-     `server/systemd/claude-live-monitor.service.template` → `/etc/systemd/system/claude-live-monitor.service`;
-     `systemctl daemon-reload && systemctl enable --now claude-live-monitor`. Keep its nginx blocks.
-     Tune the thresholds at the top of the daemon if needed (watch `journalctl -u claude-live-monitor -f`).
+     → `/var/www/stats/livetest/index.html`; then run `sudo ./server/deploy.sh` — it renders
+     `server/systemd/claude-live-monitor.service.template` (sandboxed, de-rooted) and enables it.
+     Keep its nginx blocks. Tune the thresholds at the top of the daemon if needed
+     (watch `tail -f /var/log/ccstats/live-monitor.log`).
 10. **Optional — limits feed + head-to-head competition:**
-    - **Limits feed (USAGE screen):** install `server/monitor/usage-monitor.py` → `/opt/claude-stats/`; add a
-      **root cron, every ~2 min**: `usage-monitor.py --output <WEBROOT>/claude-limits.json --merge-dir
-      <WEBROOT>/limits-remote` then chown `www-data`. It reads the freshest OAuth `accessToken` from
+    - **Limits feed (USAGE screen):** install `server/monitor/usage-monitor.py` → `/opt/claude-stats/`,
+      then run `sudo ./server/deploy.sh` — it installs `ccstats-usage.timer` (every 2 min, as
+      `ccollector`). The poller reads the freshest OAuth `accessToken` from
       `/home/*/.claude/.credentials.json` (and **never refreshes it** — that's Claude Code's job) and
       publishes 5h/7d utilization + resets. Keep the `/claude-limits.json` nginx block.
       - **Cross-server (works even if MAIN's token is long expired):** rate limits are global per
@@ -139,9 +142,9 @@ root. Don't `cd server` — several referenced paths live above it.
         fragment nodes ship there every minute (set up automatically by `provision-remote.sh`). So the
         USAGE screen stays live whenever a session is active on **any** box — MAIN never needs its own
         active token. `deploy.sh` creates the `limits-remote/` drop-zone; an empty dir is harmless.
-    - **Durable bottleneck monitor:** install `server/monitor/bottleneck-monitor.py` → `/opt/claude-stats/`;
-      install `server/systemd/claude-bottleneck-monitor.service.template` → `/etc/systemd/system/…`;
-      `systemctl enable --now claude-bottleneck-monitor`. It banks cumulative **HUMAN BOTTLENECK**
+    - **Durable bottleneck monitor:** install `server/monitor/bottleneck-monitor.py` → `/opt/claude-stats/`,
+      then run `sudo ./server/deploy.sh` — it renders + enables the de-rooted
+      `claude-bottleneck-monitor` unit. It banks cumulative **HUMAN BOTTLENECK**
       seconds (a session blocked on an `AskUserQuestion`) into `bottleneck.db` for the competition.
     - **Competition itself:** follow **[Competing with a friend](#competing-with-a-friend-head-to-head)**.
 11. **Verify:** token gate returns **200** with the right `?token=` and **403** without; the JSON
@@ -315,24 +318,28 @@ After changing pipeline code, also push it to any remotes: `sudo ./server/pipeli
 `/opt/claude-stats/backups/<timestamp>/` holding a *consistent set*: `ledger.db` + `bottleneck.db`
 (via SQLite's online backup, safe under the live crons) plus `config.json`/`token.txt`/`peer-token.txt`.
 Retention is **grandfather-father-son**: every snapshot from the **last 24 h** is kept (fine same-day
-rollback) plus the **newest one per day for 30 days**; the dir is root-only `700`. (The cheap rolling
-`ledger.db.bak` still exists for an instant one-step undo.)
+rollback) plus the **newest one per day for 30 days**; the dir is `750`, `ccollector`-owned (the
+operator's group can read). (The cheap rolling `ledger.db.bak` still exists for an instant one-step undo.)
 
-- **Force one anytime:** `sudo python3 /opt/claude-stats/extract.py --mode backup`
-- **Restore** (manual, deliberate): stop the crons (or `systemctl stop` the timer), then
+- **Force one anytime:** `sudo systemctl start ccstats-backup.service`
+- **Restore** (manual, deliberate): stop the timers/daemons
+  (`systemctl stop 'ccstats-*.timer' claude-live-monitor claude-bottleneck-monitor`), then
   ```bash
   sudo cp /opt/claude-stats/backups/<timestamp>/ledger.db     /opt/claude-stats/ledger.db
   sudo cp /opt/claude-stats/backups/<timestamp>/bottleneck.db /opt/claude-stats/bottleneck.db
+  sudo chown ccollector:ccollector /opt/claude-stats/{ledger.db,bottleneck.db}
   ```
-  and re-enable the crons. (Restore is never automatic — you choose which snapshot.)
+  and start them again. (Restore is never automatic — you choose which snapshot.)
 
 ## Uninstall
 Stop and remove everything the installer created:
-- **Root crons** — remove every one you added: the 5-min stats cron, and (if installed) the ~2-min
+- **Units + timers** (v1.2.1 layout): `systemctl disable --now claude-live-monitor
+  claude-bottleneck-monitor 'ccstats-*'` — then delete their unit files (and `*.service.d/` drop-in
+  dirs) in `/etc/systemd/system/`, `rm /usr/local/sbin/ccstats-refresh-scope`, `daemon-reload`.
+  Optionally `deluser ccollector` and `rm -rf /var/log/ccstats /var/lib/ccstats`.
+- **Legacy root crons** (pre-1.2.1 boxes only): the 5-min stats cron, and (if installed) the ~2-min
   limits-feed cron and the ~2-min competition cron (`crontab -e`, or delete the `/etc/cron.d` files).
 - **logrotate policy** — `rm -f /etc/logrotate.d/ccstats` (on remotes: `/etc/logrotate.d/ccstats-fragment`).
-- **systemd services** (whichever you enabled): `systemctl disable --now claude-live-monitor
-  claude-bottleneck-monitor`, delete their unit files in `/etc/systemd/system/`, then `daemon-reload`.
 - **nginx** — remove the `sites-enabled` symlink (and the `sites-available` vhost), `nginx -t`, reload;
   if you used a domain, optionally `certbot delete --cert-name <domain>`.
 - **Files** — remove `/opt/claude-stats` and `/var/www/stats`.

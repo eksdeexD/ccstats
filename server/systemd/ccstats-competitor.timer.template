@@ -1,0 +1,11 @@
+# ccstats — timer for ccstats-competitor.service (replaces the 2-min root cron).
+[Unit]
+Description=ccstats — refresh the competition feed every 2 minutes (odd minutes)
+
+[Timer]
+OnCalendar=*:1/2
+AccuracySec=15s
+Persistent=no
+
+[Install]
+WantedBy=timers.target

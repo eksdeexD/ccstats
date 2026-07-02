@@ -3,8 +3,24 @@
 ## Project discovery
 Any Linux user with `~/.claude/projects/` is auto-discovered (one project per user). Optional
 `~/projectname.txt` overrides the display name; if it contains the whole word **`ignore`** the
-project is excluded. Reading session files needs **root** (they're mode `0600` inside `0700`
-`~/.claude/` dirs), so the extractor runs from root's cron.
+project is excluded. Session files are mode `0600` inside `0700` `~/.claude/` dirs — readable by
+the pipeline's unprivileged `ccollector` user via `CAP_DAC_READ_SEARCH` (see below).
+
+## Privilege model (since v1.2.1)
+Nothing in the pipeline runs as root. A dedicated no-login system user, **`ccollector`**, owns the
+runtime: `ccstats-extract.timer` (5 min), `ccstats-usage.timer` (2 min), `ccstats-competitor.timer`
+(2 min, odd minutes) and the two daemons. Each unit gets **`CAP_DAC_READ_SEARCH`** — a read-only
+permission bypass for the `0600` session/credential files — and the live monitor additionally
+**`CAP_SYS_PTRACE`** (for `/proc/<pid>/io`). The units are sandboxed (`ProtectSystem=strict`,
+`ProtectHome=tmpfs`, `NoNewPrivileges`): only each user's `~/.claude` + `~/projectname.txt` are
+bind-mounted back in — a root-owned **scope refresher** (`/usr/local/sbin/ccstats-refresh-scope`,
+driven by a path watch on `/home` + a 10-min sweep timer) keeps that list current, so **new users
+are picked up automatically**. Writes are confined to `/opt/claude-stats`, `/var/www/stats` and
+`/var/log/ccstats`. State is `ccollector`-owned; code and secrets (`config.json`, tokens, remote
+keys) belong to the **operator** (the repo-checkout owner), who sits in the `ccollector` group for
+read access to state. Migration from the pre-1.2.1 root layout is automatic in `deploy.sh` —
+fallback playbook: `docs/migrate-derootify.md`. (File ACLs were rejected: Claude Code creates its
+files `0600`, and POSIX ACL inheritance masks out inherited read entries on exactly those files.)
 
 ## Parsing rules (from the real session-file corpus)
 - **Real user prompts** (for word/char/prompt counts + hour/weekday/day histograms):
@@ -61,7 +77,8 @@ The rolling `.bak` only survives until the next run, so the durable state is als
   set*: `ledger.db` + `bottleneck.db` copied via SQLite's **online backup API** (`sqlite3`'s
   `Connection.backup()`) — consistent even while the crons hold the db open, unlike a raw file copy —
   plus plain copies of `config.json`/`token.txt`/`peer-token.txt` (tiny, but painful to re-create:
-  peers + the badge/peer tokens). The dir is root-only `700`; token copies are `600`.
+  peers + the badge/peer tokens). The dir is `750` `ccollector`-owned (operator group reads);
+  token copies are `640`.
 - **Two triggers:** `deploy.sh` forces one (`extract.py --mode backup`) **before every update**, and
   the full run takes an **age-gated** one (only if the newest is >3 h old → ~8 intra-day points/day),
   so non-deploy corruption is covered. The gate is time-based, so the cron's run frequency doesn't
@@ -71,12 +88,15 @@ The rolling `.bak` only survives until the next run, so the durable state is als
   rest are pruned. Net: fine recovery granularity for the last day + a month of daily restore points
   (~38 dirs ≈ ~110 MB worst case). Foreign dirs (names that aren't a snapshot timestamp) are ignored,
   never pruned. (`--backup-keep` is a deprecated no-op kept for backward compatibility.)
-- **Restore is manual** and deliberate: stop the crons, copy a snapshot dir's `ledger.db`/
-  `bottleneck.db` back over the live ones, restart. Nothing restores automatically.
+- **Restore is manual** and deliberate: stop the timers/daemons, copy a snapshot dir's `ledger.db`/
+  `bottleneck.db` back over the live ones (keep them `ccollector`-owned), restart. Nothing restores
+  automatically.
 
 ## Output & cadence
-`--mode full` writes `claude-stats.json` (the badge/dashboard contract — see `schema.md`). A root
-cron runs it every 5 min and `chown`s the JSON to `www-data`. nginx serves it token-gated.
+`--mode full` writes `claude-stats.json` (the badge/dashboard contract — see `schema.md`).
+`ccstats-extract.timer` runs it every 5 min as `ccollector`; the JSON is world-readable and nginx
+serves it token-gated. (Pre-1.2.1 this was a root cron + `chown www-data` — the chown is now a
+best-effort no-op kept for legacy/peer boxes.)
 
 ## Multiple servers (optional, drop-in)
 A remote server runs `--mode fragment` (per-session rows) and `scp`s the JSON into the main
@@ -102,8 +122,9 @@ idle→working a state signal must hold for `active_debounce` (≈2 s, a one-sam
 idle BOTH must be quiet for `idle_debounce` (≈8 s — kept snappy because the owes-response signal, not
 a big debounce, is what covers long API latency). **Waiting**
 = a session blocked on an unanswered
-`AskUserQuestion` (transcript-based), which overrides idle. Runs as root (needs `/proc/[pid]/io`
-mode 0400, and `ss` to see every user's sockets). Tunables default in the script and are
+`AskUserQuestion` (transcript-based), which overrides idle. Runs as `ccollector` with
+`CAP_SYS_PTRACE` + `CAP_DAC_READ_SEARCH` (needs `/proc/[pid]/io` mode 0400, `ss` seeing every
+user's sockets, and the 0600 session files). Tunables default in the script and are
 **overridable per-machine via the `live_monitor` block in `config.json`** (so a box on different
 hardware tunes itself without forking the code — though the network-primary defaults usually travel
 as-is). **Verify the process matcher on each machine** — how `claude` appears in `/proc/*/cmdline`

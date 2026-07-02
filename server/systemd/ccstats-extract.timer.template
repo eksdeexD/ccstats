@@ -1,0 +1,11 @@
+# ccstats — timer for ccstats-extract.service (replaces the 5-min root cron).
+[Unit]
+Description=ccstats — run the transcript extract every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+AccuracySec=30s
+Persistent=no
+
+[Install]
+WantedBy=timers.target

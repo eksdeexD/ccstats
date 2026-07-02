@@ -1,0 +1,9 @@
+# ccstats — regenerate the collectors' /home scope drop-ins (runs as root;
+# see server/pipeline/refresh-scope.sh). Triggered by the .path unit (user
+# added/removed), the .timer sweep, and synchronously by deploy.sh.
+[Unit]
+Description=ccstats — refresh collector scope (new/removed users)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ccstats-refresh-scope

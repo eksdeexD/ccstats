@@ -1,0 +1,14 @@
+# ccstats — periodic sweep for the scope refresher: catches ~/.claude or
+# ~/projectname.txt appearing inside an existing home (first Claude Code run),
+# which the /home path-watch cannot see. Bounds new-user pickup to ~10 min.
+[Unit]
+Description=ccstats — sweep collector scope every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/10
+AccuracySec=1min
+Persistent=no
+
+[Install]
+WantedBy=timers.target

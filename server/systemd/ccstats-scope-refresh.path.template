@@ -1,0 +1,12 @@
+# ccstats — fire the scope refresher when /home itself changes (user
+# created or removed). ~/.claude appearing later inside an existing home is
+# caught by ccstats-scope-refresh.timer instead.
+[Unit]
+Description=ccstats — watch /home for new/removed users
+
+[Path]
+PathModified=/home
+Unit=ccstats-scope-refresh.service
+
+[Install]
+WantedBy=multi-user.target

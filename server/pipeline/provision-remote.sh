@@ -160,14 +160,22 @@ if [ "${1:-}" = --enable-live ]; then
   fi
   [ -f /etc/systemd/system/claude-live-monitor.service ] && \
     cp -f /etc/systemd/system/claude-live-monitor.service /etc/systemd/system/claude-live-monitor.service.bak-live 2>/dev/null || true
-  cat > /etc/systemd/system/claude-live-monitor.service <<UNIT
+  MAIN_EXEC="ExecStart=/usr/bin/python3 $OPT/live-monitor.py --server main --merge-dir $WEB/live-remote --verbose"
+  if [ -f /etc/systemd/system/claude-live-monitor.service ]; then
+    # v1.2.1+: only swap the ExecStart line — NEVER regenerate the whole unit, or a
+    # de-rooted install (User=ccollector + caps/sandboxing) would be re-rooted here.
+    sed -i "s|^ExecStart=.*|$MAIN_EXEC|" /etc/systemd/system/claude-live-monitor.service
+  else
+    # no unit yet (legacy box that never ran the live monitor): minimal root unit;
+    # the next `sudo ./server/deploy.sh` migrates it to the de-rooted template.
+    cat > /etc/systemd/system/claude-live-monitor.service <<UNIT
 [Unit]
 Description=Claude Code live activity monitor (main; merges remote servers)
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 $OPT/live-monitor.py --server main --merge-dir $WEB/live-remote --verbose
+$MAIN_EXEC
 Restart=always
 RestartSec=3
 User=root
@@ -175,6 +183,7 @@ User=root
 [Install]
 WantedBy=multi-user.target
 UNIT
+  fi
   systemctl daemon-reload
   systemctl enable --now claude-live-monitor >/dev/null 2>&1 || true
   systemctl restart claude-live-monitor
