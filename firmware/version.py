@@ -8,7 +8,8 @@
 # This program is distributed WITHOUT ANY WARRANTY; without even the implied
 # warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-# Firmware version — shown in the splash screen's lower-left corner.
+# Project version — firmware and server are released in LOCKSTEP under one
+# number (see CHANGELOG.md). Shown in the splash screen's lower-left corner.
 # Bump on user-visible releases (semver MAJOR.MINOR.PATCH). ALWAYS confirm the
 # new number with the user before committing a release — see CLAUDE.md "Versioning".
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.1"

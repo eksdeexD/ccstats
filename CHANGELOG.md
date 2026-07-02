@@ -2,6 +2,9 @@
 
 ## 1.2.1 — 2026-07-02
 
+Firmware and server now share **one project version** (this file + `firmware/version.py`
++ the git tag move together; no separate firmware numbering).
+
 **The pipeline no longer runs as root.** Everything now runs as a dedicated unprivileged
 system user, `ccollector`, in sandboxed systemd units:
 
@@ -38,4 +41,5 @@ system user, `ccollector`, in sandboxed systemd units:
 
 ## 1.1.1 and earlier
 
-Untracked in this file (predates it). 1.1.1 was the last root-mode release.
+Predate this file — see the git history. 1.1.1 (battery charging-sweep fix) was the
+last root-mode release.
