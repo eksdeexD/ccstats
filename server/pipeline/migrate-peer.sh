@@ -101,8 +101,12 @@ if ( set -e
         useradd --system --user-group --home-dir "$CHOME" --create-home \
                 --shell /usr/sbin/nologin ccollector
     fi
+    # best-effort convenience (log/state read access for the operator) — never
+    # worth failing the migration over
     if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER:-root}" != root ]; then
-        if ! id -nG "$SUDO_USER" | grep -qw ccollector; then usermod -aG ccollector "$SUDO_USER"; fi
+        if ! id -nG "$SUDO_USER" 2>/dev/null | grep -qw ccollector; then
+            usermod -aG ccollector "$SUDO_USER" 2>/dev/null || true
+        fi
     fi
     install -d -m750 -o ccollector -g ccollector "$LOGDIR"
 
@@ -243,12 +247,16 @@ LR
     fi
 else
     echo "peer de-root: a migration step FAILED — restoring the previous mode."
+    # NB: this handler still runs under set -e — every restore step must be
+    # failure-tolerant so one bad mv can't abort the rest of the rollback.
     restored_cron=0
     for f in "$QUAR"/cron.d.*; do
-        if [ -f "$f" ]; then mv "$f" "/etc/cron.d/${f##*/cron.d.}" && restored_cron=1; fi
+        if [ -f "$f" ] && mv "$f" "/etc/cron.d/${f##*/cron.d.}" 2>/dev/null; then restored_cron=1; fi
     done
-    if [ -f "$QUAR/ccstats_frag" ]; then mv "$QUAR/ccstats_frag" "$RKEY"; chown root:root "$RKEY"; chmod 600 "$RKEY"; fi
-    if [ -f "$QUAR/ccstats_frag.pub" ]; then mv "$QUAR/ccstats_frag.pub" "$RKEY.pub"; fi
+    if [ -f "$QUAR/ccstats_frag" ]; then
+        { mv "$QUAR/ccstats_frag" "$RKEY" && chown root:root "$RKEY" && chmod 600 "$RKEY"; } 2>/dev/null || true
+    fi
+    if [ -f "$QUAR/ccstats_frag.pub" ]; then mv "$QUAR/ccstats_frag.pub" "$RKEY.pub" 2>/dev/null || true; fi
     for f in "$QUAR"/*.service "$QUAR"/*.path "$QUAR"/*.timer; do
         if [ -f "$f" ]; then cp -a "$f" "/etc/systemd/system/${f##*/}" 2>/dev/null || true; fi
     done
