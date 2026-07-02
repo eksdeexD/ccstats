@@ -8,12 +8,15 @@
 # This program is distributed WITHOUT ANY WARRANTY; without even the implied
 # warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-# De-rooted since v1.2.1: runs as the unprivileged 'ccollector' user.
+# De-rooted since v1.2.1 (peers since v1.3.0): runs as unprivileged 'ccollector'.
 # CAP_DAC_READ_SEARCH  = read users' 0600 session files (read-only DAC bypass).
 # CAP_SYS_PTRACE       = read /proc/<pid>/io (0400) — drives the working/idle
 #                        signal; also lets the spawned `ss` map sockets to pids.
 # ProtectHome=tmpfs hides /home; the ccstats-refresh-scope drop-in
 # (ccstats-scope.conf) bind-mounts each user's ~/.claude back in read-only.
+# RuntimeDirectory gives peers a ccollector-owned /run/ccstats for the shipper's
+# ssh ControlPath (unused but harmless on main). -@WEB@ tolerates peers having
+# no webroot; /var/lib/ccstats (collector home) is writable for ssh known_hosts.
 
 [Unit]
 Description=Claude Code live activity monitor
@@ -21,6 +24,7 @@ After=network.target
 
 [Service]
 Type=simple
+RuntimeDirectory=ccstats
 ExecStart=/usr/bin/python3 @OPT@/live-monitor.py --verbose
 Restart=always
 RestartSec=3
@@ -35,7 +39,7 @@ CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
 AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
 ProtectSystem=strict
 ProtectHome=tmpfs
-ReadWritePaths=@OPT@ @WEB@ /var/log/ccstats
+ReadWritePaths=@OPT@ -@WEB@ -/var/lib/ccstats /var/log/ccstats
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes

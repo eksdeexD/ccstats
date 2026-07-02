@@ -17,8 +17,9 @@
 # bind-mounts back in — each user's ~/.claude plus ~/projectname.txt (the
 # display-name / 'ignore' override, which lives OUTSIDE ~/.claude).
 #
-# Installed to /usr/local/sbin/ccstats-refresh-scope by deploy.sh, which also
-# installs ccstats-scope-refresh.{service,path,timer}: the .path unit fires on
+# Installed to /usr/local/sbin/ccstats-refresh-scope by deploy.sh (main) and
+# migrate-peer.sh (fragment nodes, since v1.3.0), which also
+# install ccstats-scope-refresh.{service,path,timer}: the .path unit fires on
 # /home changes (user added/removed), the .timer sweeps every 10 min (catches
 # ~/.claude appearing on a user's FIRST Claude Code run), and deploy.sh runs
 # it synchronously at install time. Only paths that EXIST are listed, so the
@@ -31,7 +32,7 @@ set -eu
 
 HOME_ROOT="${1:-/home}"
 DROPIN_NAME="ccstats-scope.conf"
-UNITS="claude-live-monitor claude-bottleneck-monitor ccstats-extract ccstats-usage ccstats-competitor ccstats-backup"
+UNITS="claude-live-monitor claude-bottleneck-monitor ccstats-extract ccstats-usage ccstats-competitor ccstats-backup ccstats-fragment"
 DAEMONS="claude-live-monitor claude-bottleneck-monitor"
 
 TMP="$(mktemp)"

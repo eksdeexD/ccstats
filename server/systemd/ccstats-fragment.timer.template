@@ -1,0 +1,11 @@
+# ccstats — timer for ccstats-fragment.service (replaces the every-minute root cron on peers).
+[Unit]
+Description=ccstats — ship the stats fragment to the main server every minute
+
+[Timer]
+OnCalendar=*:0/1
+AccuracySec=10s
+Persistent=no
+
+[Install]
+WantedBy=timers.target

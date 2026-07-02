@@ -1,0 +1,50 @@
+# ccstats — self-hosted Claude Code usage stats (badge firmware + server)
+# Copyright (C) 2026 Zapador <zapador@zapador.net>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See the LICENSE file for the full text.
+#
+# This program is distributed WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+# FRAGMENT NODE (peer) shipment — replaces the pre-1.3.0 every-minute root cron
+# (/etc/cron.d/ccstats-fragment). Runs ship-fragment.sh as 'ccollector':
+# extract.py --mode fragment + usage-monitor.py, then sftp-uploads both to MAIN.
+# CAP_DAC_READ_SEARCH reads users' 0600 transcripts/credentials; the sftp data
+# key lives in the collector's home (/var/lib/ccstats/.ssh/ccstats_frag).
+# PrivateTmp is fine: the fragment/limits tmp files and the sftp that uploads
+# them live inside this same unit, so they share the private /tmp.
+# /var/lib/ccstats is writable for ssh known_hosts (accept-new on key rotation).
+# Rendered by migrate-peer.sh: @OPT@ / @LABEL@ / @DEST@.
+# Triggered by ccstats-fragment.timer, or manually: systemctl start ccstats-fragment
+
+[Unit]
+Description=ccstats — ship this box's stats fragment + limits reading to the main server
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=@OPT@/ship-fragment.sh @LABEL@ @DEST@
+User=ccollector
+Group=ccollector
+UMask=0022
+WorkingDirectory=@OPT@
+StandardOutput=append:/var/log/ccstats/fragment.log
+StandardError=append:/var/log/ccstats/fragment.log
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+ProtectSystem=strict
+ProtectHome=tmpfs
+ReadWritePaths=@OPT@ /var/lib/ccstats /var/log/ccstats
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
