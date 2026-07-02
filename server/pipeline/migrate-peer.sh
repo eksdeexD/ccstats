@@ -227,15 +227,22 @@ LR
         sleep 2; systemctl is-active --quiet claude-live-monitor
     fi
 
-    # 10) switch-over: quarantine the root cron (one mv from restoration) and move
+    # 10) switch-over: quarantine the root crons (one mv from restoration) and move
     #     the root key into the quarantine dir (root-only, 700) — /root/.ssh keeps
-    #     no ccstats credentials once the collector owns shipping.
+    #     no ccstats credentials once the collector owns shipping. Also matches a
+    #     hand-added ship-limits.sh cron (the pre-v1.3.0 cross-server limits stopgap;
+    #     redundant now that ship-fragment.sh ships the limits reading every minute,
+    #     and broken anyway once the root key is gone).
     for f in /etc/cron.d/*; do
-        if [ -f "$f" ] && grep -q 'ship-fragment\.sh' "$f" 2>/dev/null; then
+        if [ -f "$f" ] && grep -Eq 'ship-(fragment|limits)\.sh' "$f" 2>/dev/null; then
             mv "$f" "$QUAR/cron.d.$(basename "$f")"
             echo "peer de-root: quarantined $f -> $QUAR/"
         fi
     done
+    if [ -f "$OPT/ship-limits.sh" ]; then
+        mv "$OPT/ship-limits.sh" "$QUAR/ship-limits.sh"
+        echo "peer de-root: quarantined $OPT/ship-limits.sh (superseded by ship-fragment.sh) -> $QUAR/"
+    fi
     if [ -f "$RKEY" ]; then mv "$RKEY" "$QUAR/ccstats_frag"; fi
     if [ -f "$RKEY.pub" ]; then mv "$RKEY.pub" "$QUAR/ccstats_frag.pub"; fi
 ); then
@@ -257,6 +264,7 @@ else
         { mv "$QUAR/ccstats_frag" "$RKEY" && chown root:root "$RKEY" && chmod 600 "$RKEY"; } 2>/dev/null || true
     fi
     if [ -f "$QUAR/ccstats_frag.pub" ]; then mv "$QUAR/ccstats_frag.pub" "$RKEY.pub" 2>/dev/null || true; fi
+    if [ -f "$QUAR/ship-limits.sh" ]; then mv "$QUAR/ship-limits.sh" "$OPT/ship-limits.sh" 2>/dev/null || true; fi
     for f in "$QUAR"/*.service "$QUAR"/*.path "$QUAR"/*.timer; do
         if [ -f "$f" ]; then cp -a "$f" "/etc/systemd/system/${f##*/}" 2>/dev/null || true; fi
     done
