@@ -34,7 +34,9 @@ system user, `ccollector`, in sandboxed systemd units:
 - Logs move to `/var/log/ccstats/*.log` (logrotate policy updated; legacy
   `/var/log/claude-stats*.log` still rotated until it ages out).
 - `provision-remote.sh` no longer regenerates the main live-monitor unit (which would
-  have re-rooted it) — it only swaps the `ExecStart=` line when enabling merge.
+  have re-rooted it) — it only swaps the `ExecStart=` line when enabling merge; and it
+  keeps the webroot ccollector-owned on de-rooted boxes (it used to re-own it to root,
+  which broke the collectors' feed writes).
 - Fragment nodes (peers) are unchanged this release — still root cron + sftp; their
   de-root ships in a later release via `provision-remote.sh`. All scripts remain fully
   root-compatible for legacy/peer boxes.

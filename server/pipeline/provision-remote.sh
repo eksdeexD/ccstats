@@ -58,7 +58,11 @@ ensure_main_side() {  # idempotent main-server prerequisites
   if ! id "$STATSUSER" >/dev/null 2>&1; then
     useradd -m -s /usr/sbin/nologin "$STATSUSER"; ok "created locked-down user '$STATSUSER' (nologin, no password)"
   fi
-  install -d -m755 -o root -g www-data "$WEB"
+  # v1.2.1: on a de-rooted box the ccollector user writes the feeds, so it must
+  # keep owning the webroot — re-owning it to root here broke the collectors.
+  WEBOWNER=root
+  if id ccollector >/dev/null 2>&1; then WEBOWNER=ccollector; fi
+  install -d -m755 -o "$WEBOWNER" -g www-data "$WEB"
   install -d -m2775 -o "$STATSUSER" -g www-data "$FRAG"
   # drop-zone for remotes' shipped session/weekly limit readings (MAIN merges it with --merge-dir).
   # Same statsuser-writable perms as $FRAG, so the existing sftp-only key can write here too.
