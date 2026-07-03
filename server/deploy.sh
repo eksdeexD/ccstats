@@ -294,6 +294,19 @@ derootify() {
             install_unit claude-bottleneck-monitor.service.template claude-bottleneck-monitor.service
         fi
 
+        # 6a) unit logs must be ccollector-owned: systemd's StandardOutput=append:
+        #     creates missing files as ROOT, which the `su ccollector` logrotate rule
+        #     can neither truncate (copytruncate) nor recreate — rotation silently
+        #     skips them. Pre-create missing logs and re-own root-created ones (open
+        #     append fds are unaffected by chown). Mirrors migrate-peer.sh on peers.
+        for pair in ccstats-extract:extract ccstats-usage:usage ccstats-competitor:competitor \
+                    claude-live-monitor:live-monitor claude-bottleneck-monitor:bottleneck-monitor; do
+            lu="${pair%%:*}"; lf="$LOGDIR/${pair##*:}.log"
+            [ -f "/etc/systemd/system/$lu.service" ] || continue
+            if [ ! -f "$lf" ]; then install -m640 -o ccollector -g ccollector /dev/null "$lf"
+            else chown ccollector:ccollector "$lf"; fi
+        done
+
         # 6) ownership: state -> ccollector; code + secrets -> operator; web feeds -> ccollector
         chown ccollector:ccollector "$OPT"/ledger.db "$OPT"/ledger.db.bak "$OPT"/bottleneck.db \
             "$OPT"/milestones.json "$OPT"/celebrations.json "$OPT"/limit-hits.json \
