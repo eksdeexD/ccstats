@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1 — 2026-07-03
+
+Bugfix: on the main server, `deploy.sh`'s de-root migration now pre-creates the
+`/var/log/ccstats/*.log` unit logs owned by `ccollector` (and re-owns root-created ones on
+already-migrated boxes). systemd's `StandardOutput=append:` creates missing files as root, which
+the `su ccollector` logrotate rule could neither truncate nor recreate — so rotation silently
+skipped them. Peers already got this in v1.3.0 via `migrate-peer.sh`. Apply with the normal
+`git pull && sudo ./server/deploy.sh`.
+
 ## 1.3.0 — 2026-07-03
 
 **Fragment nodes (peers) no longer run as root** — the peer half of the v1.2.1 de-root:

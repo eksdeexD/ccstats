@@ -12,4 +12,4 @@
 # number (see CHANGELOG.md). Shown in the splash screen's lower-left corner.
 # Bump on user-visible releases (semver MAJOR.MINOR.PATCH). ALWAYS confirm the
 # new number with the user before committing a release — see CLAUDE.md "Versioning".
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
