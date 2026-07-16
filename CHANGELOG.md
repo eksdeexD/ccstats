@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.2 — 2026-07-16
+
+Bugfix: added `claude-sonnet-5` to `server/pipeline/pricing.json` ($3/$15 per MTok, cache read
+$0.30, cache write $3.75). It was missing, so every extract/competitor run logged
+`WARN: model 'claude-sonnet-5' not in pricing table` and costed its usage at Opus 4.7 rates
+(overestimate). Cost is recomputed from the ledger's per-model token counts each run, so
+deploying this retroactively corrects all historical Sonnet 5 cost. Apply with the normal
+`git pull && sudo ./server/deploy.sh`.
+
 ## 1.3.1 — 2026-07-03
 
 Bugfix: on the main server, `deploy.sh`'s de-root migration now pre-creates the
