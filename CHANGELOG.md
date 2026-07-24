@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.3 — 2026-07-25
+
+Bugfix: added `claude-opus-5` to `server/pipeline/pricing.json` ($5/$25 per MTok, cache read
+$0.50, cache write $6.25 — same rates as Opus 4.8; verified against the official models
+overview). Same shape as the 1.3.2 Sonnet 5 fix: without the entry, every extract/competitor
+run logs `WARN: model 'claude-opus-5' not in pricing table` and costs its usage at the
+fallback model's rates. Cost is recomputed from the ledger's per-model token counts each run,
+so deploying this retroactively corrects all historical Opus 5 cost. Apply with the normal
+`git pull && sudo ./server/deploy.sh`; fragments get the updated table via
+`sudo ./server/pipeline/provision-remote.sh --update all` from main (provision-remote ships
+`pricing.json` alongside `extract.py`).
+
 ## 1.3.2 — 2026-07-16
 
 Bugfix: added `claude-sonnet-5` to `server/pipeline/pricing.json` ($3/$15 per MTok, cache read
