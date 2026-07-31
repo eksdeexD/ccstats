@@ -249,8 +249,17 @@ def parse_session_records(files):
     events = []    # [datetime] for work-session timeline
     date_min = date_max = None
     cwd = None     # the session's working dir (from the transcript) — names projects in 'directory' mode
+    # Workflow-spawned subagents never appear as an Agent/Task tool_use block in the parent
+    # transcript — the ONLY on-disk evidence of each launch is its sidechain file under
+    # <sessionId>/subagents/workflows/wf_*/agent-*.jsonl. Count those files as launches (dated by
+    # each file's first timestamp). Agent-tool subagent files live under subagents/ but NOT under
+    # workflows/, so the path test below can't double-count a launch that already has a tool_use.
+    wf_agents = []  # one local-date string (or None) per workflow-spawned subagent file
+    wf_marker = os.sep + os.path.join("subagents", "workflows") + os.sep
 
     for f in files:
+        is_wf_agent = wf_marker in f and os.path.basename(f).startswith("agent-")
+        wf_first_dt = None
         try:
             sz = os.path.getsize(f)
         except OSError:
@@ -278,6 +287,8 @@ def parse_session_records(files):
                     cwd = r.get("cwd") or None   # first cwd seen wins; used by 'directory' granularity
                 dt = parse_ts(r.get("timestamp"))
                 if dt is not None:
+                    if is_wf_agent and wf_first_dt is None:
+                        wf_first_dt = dt   # file's first timestamp ≈ the subagent's launch time
                     events.append(dt)
                     d = local_date_str(dt)
                     if date_min is None or d < date_min:
@@ -361,15 +372,19 @@ def parse_session_records(files):
                                    "datehour": ldt.strftime("%Y-%m-%dT%H") if ldt else None,
                                    "hour": ldt.hour if ldt else None,
                                    "weekday": ldt.weekday() if ldt else None}
+        if is_wf_agent:
+            wf_agents.append(local_date_str(wf_first_dt) if wf_first_dt else None)
     # Fold each requestId's unioned tool_use blocks onto its kept (max-output) record.
     for rid, rec in asst.items():
         rec["tools"] = list(tool_ids.get(rid, {}).values())
-    return {"asst": asst, "users": users, "events": events,
+    return {"asst": asst, "users": users, "events": events, "wf_agents": wf_agents,
             "date_min": date_min, "date_max": date_max, "cwd": cwd}
 
 
-def metrics_from_records(asst, users, events, date_min, date_max):
-    """Aggregate one session's OWNED records into the metrics dict (badge-row shape)."""
+def metrics_from_records(asst, users, events, date_min, date_max, wf_agents=()):
+    """Aggregate one session's OWNED records into the metrics dict (badge-row shape).
+       wf_agents: launch-date strings (or None) of the session's workflow-spawned subagents —
+       counted into agent_launches/daily agents alongside Agent/Task tool_use blocks."""
     tin = tout = tcr = tcc = 0
     tool_counts = Counter()
     model_counts = Counter()
@@ -402,12 +417,16 @@ def metrics_from_records(asst, users, events, date_min, date_max):
         if rec["date"]:
             daily_tokens[rec["date"]] += rec_total
             daily_io[rec["date"]] += rec["in"] + rec["out"]
-            daily_agents[rec["date"]] += sum(1 for tn in rec["tools"] if tn == "Agent")
+            daily_agents[rec["date"]] += sum(1 for tn in rec["tools"] if tn in ("Agent", "Task"))
             dmt = daily_model_tokens[rec["date"]][rec["model"]]
             dmt["input"] += rec["in"]; dmt["output"] += rec["out"]
             dmt["cache_read"] += rec["cr"]; dmt["cache_create"] += rec["cc"]
         if rec.get("datehour"):
             h = hourly[rec["datehour"]]; h["t"] += rec_total; h["i"] += rec["in"]; h["o"] += rec["out"]
+
+    for d in wf_agents:
+        if d:
+            daily_agents[d] += 1
 
     user_words = user_chars = user_chars_typed = user_prompts = 0
     daily_prompts = Counter()
@@ -490,7 +509,7 @@ def metrics_from_records(asst, users, events, date_min, date_max):
                 nightowl_active_min += mins
 
     active_dates = [d for d, c in daily_prompts.items() if c > 0]
-    all_dates = sorted(set(daily_prompts) | set(daily_tokens) | set(daily_active))
+    all_dates = sorted(set(daily_prompts) | set(daily_tokens) | set(daily_active) | set(daily_agents))
     return {
         "tokens_input": tin, "tokens_output": tout, "tokens_cache_read": tcr, "tokens_cache_create": tcc,
         "tokens_total": tin + tout + tcr + tcc,
@@ -503,6 +522,10 @@ def metrics_from_records(asst, users, events, date_min, date_max):
         # sessions never double-count active time. Legacy/pruned/archive rows lack this and fall
         # back to their summed total_active_min in combine() (see the fallback there).
         "active_spans": [[s.isoformat(), e.isoformat()] for s, e in spans],
+        # All subagent launches regardless of mechanism: Agent (new CLI) / Task (older CLI)
+        # tool_use blocks + workflow-spawned sidechain files. Banked as its own scalar because
+        # workflow launches have NO tool_use block — tool_counts alone can't reconstruct this.
+        "agent_launches": tool_counts.get("Agent", 0) + tool_counts.get("Task", 0) + len(wf_agents),
         "tool_counts": dict(tool_counts), "model_counts": dict(model_counts),
         "model_tokens": {m: dict(v) for m, v in model_tokens.items()},
         "daily_model_tokens": {d: {m: dict(v) for m, v in mt.items()}
@@ -540,7 +563,8 @@ def build_session_metrics(recs, owner):
     for key, rec in recs.items():
         oa = {rid: r for rid, r in rec["asst"].items() if owner.get(rid) == key}
         ou = {uid: r for uid, r in rec["users"].items() if owner.get(uid) == key}
-        metrics_by_key[key] = metrics_from_records(oa, ou, rec["events"], rec["date_min"], rec["date_max"])
+        metrics_by_key[key] = metrics_from_records(oa, ou, rec["events"], rec["date_min"], rec["date_max"],
+                                                   wf_agents=rec.get("wf_agents") or ())
     return metrics_by_key, new_assign
 
 
@@ -650,6 +674,7 @@ def union_active(spans):
 def combine(rows):
     c = {k: 0 for k in SCALAR_KEYS}
     c["longest_session_min"] = 0
+    c["agent_launches"] = 0
     tool = Counter(); mcount = Counter()
     mtok = defaultdict(lambda: {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "turns": 0})
     daily = defaultdict(lambda: {"prompts": 0, "tokens": 0, "tokens_io": 0, "active_min": 0, "words": 0, "sessions": 0, "agents": 0})
@@ -681,7 +706,12 @@ def combine(rows):
         else:
             fb_total += r.get("total_active_min", 0) or 0
             fb_nightowl += r.get("nightowl_active_min", 0) or 0
-        tool.update(r.get("tool_counts", {}) or {})
+        tc = r.get("tool_counts", {}) or {}
+        al = r.get("agent_launches")
+        if al is None:   # legacy banked row (pre-workflow counting): its Agent/Task tool uses
+            al = (tc.get("Agent", 0) or 0) + (tc.get("Task", 0) or 0)
+        c["agent_launches"] += al
+        tool.update(tc)
         mcount.update(r.get("model_counts", {}) or {})
         for m, t in (r.get("model_tokens", {}) or {}).items():
             for k in ("input", "output", "cache_read", "cache_create", "turns"):
@@ -810,7 +840,7 @@ def aggregate(rows, pricing, pricing_date, generated_at):
             "tokens_cache_read": pg["tokens_cache_read"], "tokens_cache_create": pg["tokens_cache_create"],
             "user_words": pg["user_words"], "user_prompts": pg["user_prompts"],
             "tool_uses": sum(pg["tool_counts"].values()),
-            "agent_launches": pg["tool_counts"].get("Agent", 0),
+            "agent_launches": pg["agent_launches"],
             "cost_estimate_usd": round(pc["total_usd"], 2),
             # active time in this project: total_active_min is the UNION (concurrent sessions counted
             # once); avg_session_min uses the SUMMED basis (mean session length — concurrency irrelevant).
@@ -841,7 +871,7 @@ def aggregate(rows, pricing, pricing_date, generated_at):
             "tokens_input": ti, "tokens_output": g["tokens_output"],
             "tokens_cache_read": cr, "tokens_cache_create": cc, "tokens_total": g["tokens_total"],
             "cache_hit_ratio": round(cr / cache_denom, 4) if cache_denom else 0.0,
-            "tool_uses": tool_uses, "agent_launches": g["tool_counts"].get("Agent", 0),
+            "tool_uses": tool_uses, "agent_launches": g["agent_launches"],
             "favorite_model": favorite_model,
             "peak_hour": g["hours"].index(max(g["hours"])) if any(g["hours"]) else 0,
             "peak_weekday": g["weekdays"].index(max(g["weekdays"])) if any(g["weekdays"]) else 0,
@@ -1032,7 +1062,7 @@ def build_competitor_payload(rows, pricing, pricing_date, generated_at, cfg, bot
         "nightowl_active_min": g["nightowl_active_min"], "user_chars_typed": g["user_chars_typed"],
         "words_typed_total": g["user_words"], "prompts_total": g["user_prompts"],
         "tokens_total_all": total_tokens, "tokens_output_all": g["tokens_output"],
-        "agents_total": g["tool_counts"].get("Agent", 0),
+        "agents_total": g["agent_launches"],
         "tool_uses": sum(g["tool_counts"].values()),
         "cost_usd_all": round(cost["total_usd"], 2),
         "cache_hit_ratio": round(g["tokens_cache_read"] / (g["tokens_cache_read"] +
@@ -1059,7 +1089,7 @@ def build_competitor_payload(rows, pricing, pricing_date, generated_at, cfg, bot
             "cost_estimate_usd": round(pc["total_usd"], 2),
             "user_prompts": pg["user_prompts"], "user_words": pg["user_words"],
             "total_active_min": pg["total_active_min"],
-            "agent_launches": pg["tool_counts"].get("Agent", 0),
+            "agent_launches": pg["agent_launches"],
         })
     projects.sort(key=lambda r: r["tokens_total"], reverse=True)
 

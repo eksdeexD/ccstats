@@ -31,7 +31,7 @@ Compact JSON, regenerated every 5 min. `meta.schema_version` is `1` — bump on 
     "tokens_cache_create": 0, "tokens_total": 0,
     "cache_hit_ratio": 0.0,                          // cache_read / (cache_read+cache_create+input)
     "tool_uses": 0,
-    "agent_launches": 0,   // subagent (Agent/Task tool) launches, all-time
+    "agent_launches": 0,   // subagent launches, all-time: Agent/Task tool_use blocks + workflow-spawned subagent transcripts (subagents/workflows/**/agent-*.jsonl — Workflow launches write no tool_use block)
     "favorite_model": "…",
     "peak_hour": 0,        // 0–23, local
     "peak_weekday": 0      // 0=Mon … 6=Sun

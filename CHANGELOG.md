@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.4 — 2026-08-01
+
+Bugfix: subagent launches spawned via the Workflow tool were never counted — a project doing all
+its agent fan-out through workflows showed 0 agents despite hundreds of real subagent runs.
+Workflow launches write no `Agent`/`Task` tool_use block in the parent transcript; the only
+on-disk evidence of each launch is its sidechain file under
+`<sessionId>/subagents/workflows/wf_*/agent-*.jsonl`. `extract.py` now counts those files as
+launches (dated by each file's first timestamp) and also accepts the older CLI's `Task` tool name
+alongside `Agent`. Launches are banked per session as a new `agent_launches` metric; aggregation
+falls back to a legacy row's `Agent`+`Task` tool counts, so pre-existing ledger rows keep their
+historical numbers. Counts recompute from transcripts each run, so deploying backfills agent
+history for any transcript still on disk. Apply with the normal `git pull && sudo
+./server/deploy.sh`; `extract.py` changed, so fragments also need
+`sudo ./server/pipeline/provision-remote.sh --update all` from main.
+
 ## 1.3.3 — 2026-07-25
 
 Bugfix: added `claude-opus-5` to `server/pipeline/pricing.json` ($5/$25 per MTok, cache read

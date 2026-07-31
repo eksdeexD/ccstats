@@ -47,6 +47,11 @@ peer boxes on purpose. See `docs/remote-fragment.md` § "Privilege model on peer
   are unaffected by it.
 - **Subagent files** (`<sessionId>/subagents/**`) are folded into their parent session; their
   model calls count (dedup makes it safe).
+- **Agent launches** = `Agent` (new CLI) / `Task` (older CLI) `tool_use` blocks **plus** one per
+  workflow-spawned subagent file (`subagents/workflows/**/agent-*.jsonl`, dated by its first
+  timestamp) — `Workflow`-tool launches write no per-subagent `tool_use` block, so the sidechain
+  file is the only evidence. Banked per session as the `agent_launches` scalar; `combine()` falls
+  back to a legacy row's `Agent`+`Task` tool counts when the scalar is absent (pre-fix banked rows).
 - **Sessions** = count of top-level `<encoded-cwd>/<sessionId>.jsonl` files. **Work sessions** =
   each session's event timeline split on idle gaps > 20 min. Active/project/endurance time credits
   each within-session idle gap at most 5 min (a longer gap ≤ 20 min keeps the session whole but still
