@@ -49,6 +49,15 @@ You don't need the hardware — the same feeds render in a **web dashboard** in 
 minimum is just a **Linux machine that runs Claude Code**; the **Badgeware Tufty 2350** badge is an
 optional physical desk display on top.
 
+**Known accuracy caveat (upstream bug):** Claude Code's transcript writer often omits the final
+usage record for **subagent** requests (~20% of them; [anthropics/claude-code#84223
+](https://github.com/anthropics/claude-code/issues/84223)) — the missing output tokens (including
+all extended-thinking tokens) never reach disk, so no transcript-based tool can count them.
+Main-session numbers are exact; **subagent-heavy output-token totals are a lower bound** —
+reasoning-heavy agent workloads can be undercounted several-fold. ccstats counts the affected
+requests (`lost_usage_requests` in the feed) so you can see when a total is affected; once the
+bug is fixed upstream, new sessions heal automatically.
+
 ## What's in here
 
 | Path | What it is |

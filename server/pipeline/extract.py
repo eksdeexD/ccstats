@@ -101,7 +101,8 @@ DEFAULT_LEDGER = "/opt/claude-stats/ledger.db"
 
 SCALAR_KEYS = ("tokens_input", "tokens_output", "tokens_cache_read", "tokens_cache_create",
                "user_words", "user_chars", "user_chars_typed", "user_prompts", "sessions",
-               "work_sessions", "total_active_min", "nightowl_active_min")
+               "work_sessions", "total_active_min", "nightowl_active_min",
+               "lost_usage_requests", "server_web_search", "server_web_fetch")
 
 # Best-effort recovery of usage pruned BEFORE the ledger existed (--mode seed). Populate this with
 # per-project aggregate figures if you need to backfill totals that were lost before this ledger
@@ -220,6 +221,11 @@ def group_files(projdir):
     groups = defaultdict(list)
     has_top = {}
     for f in files:
+        # Workflow journal files hold only started/result records (no assistant usage) — they
+        # contribute 0 today, but skip them by name so a future record type there can never
+        # leak into token sums.
+        if os.path.basename(f) == "journal.jsonl":
+            continue
         rel = os.path.relpath(f, projdir).split(os.sep)
         if len(rel) == 2:                       # <encoded>/<sessionId>.jsonl
             sid = rel[1][:-6] if rel[1].endswith(".jsonl") else rel[1]
@@ -245,6 +251,16 @@ def parse_session_records(files):
        assistant keyed by requestId (keep max output_tokens); user prompts keyed by uuid."""
     asst = {}      # rid -> {in,out,cr,cc,model,tools,date}
     tool_ids = {}  # rid -> {block_id: tool_name} — unioned across the rid's streaming records
+    # rids that got a FINALIZED record (non-null stop_reason). Claude Code streams each content
+    # block as its own record carrying an early usage snapshot (stop_reason null, output_tokens
+    # often 1), then writes the request's final cumulative usage on a stop_reason-bearing record.
+    # Main-session files always get that final; subagent files LOSE it on ~20% of requests (race
+    # in the writer, reproduced on CLI 2.1.177 and 2.1.222) — the true output tokens (including
+    # ALL thinking tokens, which only ever appear in the final) then never reach disk, and
+    # keep-max banks the near-zero snapshot. Unrecoverable at parse time; we count the affected
+    # requests so totals can be labeled a lower bound. Upstream:
+    # https://github.com/anthropics/claude-code/issues/84223
+    finalized = set()
     users = {}     # uuid -> {words,chars,date,hour,weekday}
     events = []    # [datetime] for work-session timeline
     date_min = date_max = None
@@ -306,6 +322,8 @@ def parse_session_records(files):
                     rid = r.get("requestId") or r.get("uuid")
                     if rid is None:
                         continue
+                    if msg.get("stop_reason") is not None:
+                        finalized.add(rid)
                     # Claude Code writes EACH tool_use block as its OWN streaming record: all the
                     # records of one requestId share the same cumulative output_tokens, and the
                     # tool_use blocks are spread one-per-record across them — no single record holds
@@ -327,9 +345,15 @@ def parse_session_records(files):
                     prev = asst.get(rid)
                     if prev is None or out > prev["out"]:
                         ldt = dt.astimezone(TZ) if dt else None
+                        # server_tool_use rides only the finalized (max-output) record, so taking
+                        # it from the kept record IS the per-requestId max — never a per-record
+                        # sum. Zero observed today (server-side web counters); banked defensively.
+                        stu = usage.get("server_tool_use") or {}
                         asst[rid] = {"in": int(usage.get("input_tokens") or 0), "out": out,
                                      "cr": int(usage.get("cache_read_input_tokens") or 0),
                                      "cc": int(usage.get("cache_creation_input_tokens") or 0),
+                                     "wsr": int(stu.get("web_search_requests") or 0),
+                                     "wfr": int(stu.get("web_fetch_requests") or 0),
                                      "model": model or "unknown",
                                      "date": ldt.date().isoformat() if ldt else None,
                                      "datehour": ldt.strftime("%Y-%m-%dT%H") if ldt else None}
@@ -374,9 +398,11 @@ def parse_session_records(files):
                                    "weekday": ldt.weekday() if ldt else None}
         if is_wf_agent:
             wf_agents.append(local_date_str(wf_first_dt) if wf_first_dt else None)
-    # Fold each requestId's unioned tool_use blocks onto its kept (max-output) record.
+    # Fold each requestId's unioned tool_use blocks onto its kept (max-output) record, and mark
+    # whether the rid ever produced a finalized (stop_reason-bearing) usage record.
     for rid, rec in asst.items():
         rec["tools"] = list(tool_ids.get(rid, {}).values())
+        rec["final"] = rid in finalized
     return {"asst": asst, "users": users, "events": events, "wf_agents": wf_agents,
             "date_min": date_min, "date_max": date_max, "cwd": cwd}
 
@@ -403,10 +429,12 @@ def metrics_from_records(asst, users, events, date_min, date_max, wf_agents=()):
     # lets a window compute the no-cache "input+output" race; buckets banked before
     # then have no `i` and read as 0 (only affects the all-time window, which VERSUS doesn't use).
     hourly = defaultdict(lambda: {"t": 0, "i": 0, "o": 0, "p": 0, "w": 0})
+    web_search = web_fetch = 0
     for rec in asst.values():
         if rec["out"] == 0:
             continue
         tin += rec["in"]; tout += rec["out"]; tcr += rec["cr"]; tcc += rec["cc"]
+        web_search += rec.get("wsr", 0); web_fetch += rec.get("wfr", 0)
         mt = model_tokens[rec["model"]]
         mt["input"] += rec["in"]; mt["output"] += rec["out"]
         mt["cache_read"] += rec["cr"]; mt["cache_create"] += rec["cc"]; mt["turns"] += 1
@@ -508,6 +536,14 @@ def metrics_from_records(asst, users, events, date_min, date_max, wf_agents=()):
             if a.astimezone(TZ).hour < 6:
                 nightowl_active_min += mins
 
+    # Requests whose final cumulative usage never reached the transcript (see parse_session_records:
+    # the subagent-writer race, anthropics/claude-code#84223). Their output tokens are undercounted
+    # by an unknowable amount — banked per session so feeds can present subagent-heavy totals as a
+    # lower bound. Gated on the session having at least one finalized request, so a transcript from
+    # a (hypothetical) CLI that never wrote stop_reason at all doesn't flag every request.
+    lost_usage = (sum(1 for rec in asst.values() if not rec.get("final"))
+                  if any(rec.get("final") for rec in asst.values()) else 0)
+
     active_dates = [d for d, c in daily_prompts.items() if c > 0]
     all_dates = sorted(set(daily_prompts) | set(daily_tokens) | set(daily_active) | set(daily_agents))
     return {
@@ -526,6 +562,8 @@ def metrics_from_records(asst, users, events, date_min, date_max, wf_agents=()):
         # tool_use blocks + workflow-spawned sidechain files. Banked as its own scalar because
         # workflow launches have NO tool_use block — tool_counts alone can't reconstruct this.
         "agent_launches": tool_counts.get("Agent", 0) + tool_counts.get("Task", 0) + len(wf_agents),
+        "lost_usage_requests": lost_usage,
+        "server_web_search": web_search, "server_web_fetch": web_fetch,
         "tool_counts": dict(tool_counts), "model_counts": dict(model_counts),
         "model_tokens": {m: dict(v) for m, v in model_tokens.items()},
         "daily_model_tokens": {d: {m: dict(v) for m, v in mt.items()}
@@ -790,6 +828,10 @@ def longest_and_current_streak(active_set, corpus_end):
 
 def aggregate(rows, pricing, pricing_date, generated_at):
     g = combine(rows)
+    if g["lost_usage_requests"]:
+        warn("%d request(s) lost their final usage record (Claude Code subagent-writer bug, "
+             "anthropics/claude-code#84223) — output-token totals are a lower bound"
+             % g["lost_usage_requests"])
     corpus_start = g["date_min"] or generated_at[:10]
     corpus_end = g["date_max"] or generated_at[:10]
     start_d = date.fromisoformat(corpus_start)
@@ -841,6 +883,7 @@ def aggregate(rows, pricing, pricing_date, generated_at):
             "user_words": pg["user_words"], "user_prompts": pg["user_prompts"],
             "tool_uses": sum(pg["tool_counts"].values()),
             "agent_launches": pg["agent_launches"],
+            "lost_usage_requests": pg["lost_usage_requests"],
             "cost_estimate_usd": round(pc["total_usd"], 2),
             # active time in this project: total_active_min is the UNION (concurrent sessions counted
             # once); avg_session_min uses the SUMMED basis (mean session length — concurrency irrelevant).
@@ -872,6 +915,10 @@ def aggregate(rows, pricing, pricing_date, generated_at):
             "tokens_cache_read": cr, "tokens_cache_create": cc, "tokens_total": g["tokens_total"],
             "cache_hit_ratio": round(cr / cache_denom, 4) if cache_denom else 0.0,
             "tool_uses": tool_uses, "agent_launches": g["agent_launches"],
+            # API requests whose final usage never reached the transcript (Claude Code subagent-
+            # writer bug, anthropics/claude-code#84223): output-token totals are a LOWER BOUND
+            # when this is > 0 — reasoning-heavy subagent workloads can be undercounted several-fold.
+            "lost_usage_requests": g["lost_usage_requests"],
             "favorite_model": favorite_model,
             "peak_hour": g["hours"].index(max(g["hours"])) if any(g["hours"]) else 0,
             "peak_weekday": g["weekdays"].index(max(g["weekdays"])) if any(g["weekdays"]) else 0,
@@ -1612,6 +1659,10 @@ def build_fragment(home_glob, server, generated_at, mode="user"):
         srv, user, name, sess_flag = meta[key]
         m["session_id"] = recs[key]["_sid"]; m["sessions"] = sess_flag
         sessions.append({"session_id": m["session_id"], "username": user, "project": name, "metrics": m})
+    lost = sum(s["metrics"].get("lost_usage_requests", 0) or 0 for s in sessions)
+    if lost:
+        warn("%d request(s) lost their final usage record (Claude Code subagent-writer bug, "
+             "anthropics/claude-code#84223) — output-token totals are a lower bound" % lost)
     return {"server": server, "generated_at": generated_at, "sessions": sessions}
 
 

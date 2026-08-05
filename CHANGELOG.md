@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.4.0 — 2026-08-05
+
+Surface an upstream Claude Code bug that makes subagent output-token totals a **lower bound**:
+the CLI's transcript writer omits the final cumulative usage record on ~20% of subagent API
+requests (reproduced on 2.1.177 and 2.1.222; main-session files are unaffected — they always
+backfill). The missing record is the only place a request's true output tokens — including ALL
+extended-thinking tokens — ever appear, so the loss is invisible and unrecoverable from the
+transcript: reasoning-heavy agent workloads can be undercounted several-fold. **This is a bug
+Anthropic has to fix**; reported upstream with a minimal repro as
+[anthropics/claude-code#84223](https://github.com/anthropics/claude-code/issues/84223). Once
+fixed, new sessions heal automatically (historical losses can't be recomputed — pruned
+transcripts are gone).
+
+What ccstats now does about it (detection, not correction — the missing tokens never reached
+disk):
+
+- **New `lost_usage_requests` metric** (per session in the ledger; surfaced in `totals` and per
+  project in `projects[]`): the exact count of affected requests, detected by the absence of any
+  `stop_reason`-bearing usage record for a requestId (validated against harness-side metering —
+  zero false positives; where the final record exists, ccstats' keep-max parse is exact).
+  Additive schema field — no `schema_version` bump; older rows read as 0.
+- Extract runs log a single `WARN` with the affected-request count when > 0.
+- Defensive hardening: workflow `journal.jsonl` files are skipped by name (they carry no usage
+  today; future-proofs the sums), and server-side web counters (`usage.server_tool_use`) are
+  banked per-requestId (`server_web_search`/`server_web_fetch`, zero observed today).
+- Docs: README "known accuracy caveat" + `docs/schema.md` field notes.
+
+Apply with the normal `git pull && sudo ./server/deploy.sh`; `extract.py` changed, so fragments
+also need `sudo ./server/pipeline/provision-remote.sh --update all` from main.
+
 ## 1.3.4 — 2026-08-01
 
 Bugfix: subagent launches spawned via the Workflow tool were never counted — a project doing all

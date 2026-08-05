@@ -32,6 +32,14 @@ Compact JSON, regenerated every 5 min. `meta.schema_version` is `1` — bump on 
     "cache_hit_ratio": 0.0,                          // cache_read / (cache_read+cache_create+input)
     "tool_uses": 0,
     "agent_launches": 0,   // subagent launches, all-time: Agent/Task tool_use blocks + workflow-spawned subagent transcripts (subagents/workflows/**/agent-*.jsonl — Workflow launches write no tool_use block)
+    "lost_usage_requests": 0,  // API requests whose final usage record never reached the transcript
+                               //   (Claude Code subagent-writer bug, anthropics/claude-code#84223: the
+                               //   final cumulative usage — including ALL thinking tokens — is written on
+                               //   a stop_reason-bearing record that subagent files lose on ~20% of
+                               //   requests; main sessions always get it). When > 0, output-token totals
+                               //   are a LOWER BOUND — reasoning-heavy subagent workloads can be
+                               //   undercounted several-fold. Additive field (older consumers ignore it;
+                               //   rows banked before it read as 0).
     "favorite_model": "…",
     "peak_hour": 0,        // 0–23, local
     "peak_weekday": 0      // 0=Mon … 6=Sun
@@ -58,6 +66,7 @@ Compact JSON, regenerated every 5 min. `meta.schema_version` is `1` — bump on 
                   "tokens_cache_read": 0, "tokens_cache_create": 0, // consumer can scale by no-cache
                   "user_words": 0, "user_prompts": 0,               // (input+output) instead of total
                   "tool_uses": 0, "agent_launches": 0,              // agent_launches = subagent launches in this project
+                  "lost_usage_requests": 0,                          // this project's share of totals.lost_usage_requests (same caveat)
                   "cost_estimate_usd": 0.0,
                   "total_active_min": 0, "longest_session_min": 0,   // active time in this project: union of
                                                                      //   its sessions' spans (concurrent → once)
