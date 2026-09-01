@@ -89,6 +89,16 @@ INLINE_CODE_RE = re.compile(r"`[^`]*`")
 MD_HEADER_RE = re.compile(r"^[ \t]*#{2,6}[ \t]+\S", re.M)
 MD_BOLD_RE = re.compile(r"\*\*[^*\n]+\*\*")
 MD_DROP_MIN = 3
+# Length-based paste drop: a prompt longer than this many words (counted after URL stripping) is
+# treated as pasted content and dropped whole (words/chars/prompt counts), same as the markdown
+# drop above. Rationale: pasted text reaches the transcript inlined with NO marker, and prose-like
+# pastes (model output, documents, log narratives) carry no code fences or markdown either — length
+# is the only content-agnostic signal left. 600 was calibrated 2026-09-01 against ~4,000 counted
+# prompts from two users over 3-4.3 months: genuine hand-typed prompts virtually never exceed it
+# (worst corpus: 3 of 2,088 over 4.3 months, 0.14%), while the big inflators (multi-thousand-word
+# document/log/output pastes) sit far above it. Pastes below the limit still count — accepted noise,
+# bounded at 600 words each, versus the unbounded inflation this rule removes.
+PASTE_DROP_WORDS = 600
 IGNORE_RE = re.compile(r"\bignore\b", re.IGNORECASE)
 WORK_SESSION_GAP = timedelta(minutes=20)   # an idle gap > this ENDS a work-session (continuity boundary)
 ACTIVE_GAP_CAP = timedelta(minutes=5)      # but any single within-session idle gap credits AT MOST this much
@@ -388,6 +398,9 @@ def parse_session_records(files):
                     if len(MD_HEADER_RE.findall(text)) + len(MD_BOLD_RE.findall(text)) >= MD_DROP_MIN:
                         continue
                     clean = URL_RE.sub("", text)
+                    # Over-length prompts are pasted content, dropped whole — see PASTE_DROP_WORDS.
+                    if len(clean.split()) > PASTE_DROP_WORDS:
+                        continue
                     typed = INLINE_CODE_RE.sub("", FENCE_RE.sub("", clean))  # drop pasted code
                     ldt = dt.astimezone(TZ) if dt else None
                     users[uuid] = {"words": len(clean.split()), "chars": len(clean),

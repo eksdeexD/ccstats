@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.4.1 — 2026-09-01
+
+Data-quality fix: long pasted content no longer inflates the typed word/char stats. Claude Code
+stores pasted text inlined in the transcript with no marker, so pasted documents, logs, and model
+output counted as words the user "typed" — a single paste could add thousands of bogus words, and
+prose-like pastes evade both existing defenses (the code-fence strip and the markdown-document
+drop). `extract.py` now drops any user prompt longer than **600 words** (`PASTE_DROP_WORDS`,
+counted after URL stripping) whole — from `user_words`, `user_chars`, `user_chars_typed` and the
+prompt count, same treatment as the markdown-document rule.
+
+The 600 cutoff was calibrated against ~4,000 counted prompts from two users over 3-4.3 months of
+transcripts: genuine hand-typed prompts virtually never exceed it (worst case 3 of 2,088, 0.14%),
+while the large pastes this targets sit far above it. Known, accepted trade-offs: a typed preamble
+above a long paste is dropped with it, and pastes under 600 words still count (bounded noise —
+each adds at most 600 words, versus the unbounded inflation removed).
+
+**Retroactive for retained transcripts:** word/char metrics are recomputed per session on every
+extract run and the ledger row is replaced wholesale, so history self-corrects as far back as
+transcripts still exist on disk, on the first run after updating. Sessions whose transcripts were
+already pruned keep their old counts.
+
+Apply with the normal `git pull && sudo ./server/deploy.sh`; `extract.py` changed, so fragments
+also need `sudo ./server/pipeline/provision-remote.sh --update all` from main.
+
 ## 1.4.0 — 2026-08-05
 
 Surface an upstream Claude Code bug that makes subagent output-token totals a **lower bound**:
