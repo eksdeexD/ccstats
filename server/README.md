@@ -312,6 +312,30 @@ sudo ./server/deploy.sh      # re-installs code only; leaves config.json, token.
 ```
 After changing pipeline code, also push it to any remotes: `sudo ./server/pipeline/provision-remote.sh --update all`.
 
+### One-time fix: `git pull` fails with "You have divergent branches"
+
+If your clone was made **before 2026-08-17**, this is expected and happens exactly once. On that
+date the repository's history was rewritten to remove a private email address that a GitHub
+web-editor commit had accidentally recorded in commit metadata. File contents are unchanged, but
+every commit SHA from v1.2.1 onward changed — as did tags v1.2.1–v1.3.4 — so git sees your old
+clone and the rewritten remote as unrelated branches.
+
+**Do not merge or rebase.** A stats box keeps no local commits (deploys never touch your
+`config.json`/`token.txt`/`ledger.db`, which live outside git's tracking), so simply replace the
+stale history with the rewritten one. As the user that owns the clone:
+
+```bash
+git status --short                  # sanity check: should print nothing
+git fetch origin --tags --force     # --tags --force is required: stale local tags would
+                                    # otherwise keep the old history's objects alive
+git reset --hard origin/main
+git reflog expire --expire=now --all && git gc --prune=now   # purge the old objects from disk
+```
+
+Then update as usual (`sudo ./server/deploy.sh`, and `provision-remote.sh --update all` if you
+have remotes). If `git status` unexpectedly shows local changes you care about, stash them before
+the reset. Clones made after 2026-08-17 are unaffected and will never see this.
+
 ## Backups & restore
 `deploy.sh` takes a **timestamped snapshot before every update**, and the full run takes one **every
 ~3 hours** — so a bad deploy or a corrupted run is recoverable. Each snapshot is one dir under

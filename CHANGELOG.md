@@ -22,7 +22,10 @@ transcripts still exist on disk, on the first run after updating. Sessions whose
 already pruned keep their old counts.
 
 Apply with the normal `git pull && sudo ./server/deploy.sh`; `extract.py` changed, so fragments
-also need `sudo ./server/pipeline/provision-remote.sh --update all` from main.
+also need `sudo ./server/pipeline/provision-remote.sh --update all` from main. **Note:** on clones
+made before 2026-08-17, `git pull` will stop with a one-time "divergent branches" error (the
+history was rewritten that day to scrub a private email address from commit metadata) — the fix is
+in `server/README.md` → "Updating".
 
 ## 1.4.0 — 2026-08-05
 

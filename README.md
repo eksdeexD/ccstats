@@ -82,7 +82,9 @@ playbook, security notes, and the stats catalog are in **[`server/README.md`](se
 It's also possible to use on a local machine with just the web dashboard, or with a Badgeware Tufty over LAN.
 
 Manual update later: `git pull && sudo ./server/deploy.sh` (code only — your config, token, and
-ledger are never touched).
+ledger are never touched). If `git pull` complains about **divergent branches** on a clone from
+before 2026-08-17, see the one-time fix in
+[`server/README.md` → Updating](server/README.md#one-time-fix-git-pull-fails-with-you-have-divergent-branches).
 
 **Least-privilege runtime (v1.2.1):** the pipeline no longer runs as root. Everything runs as a
 dedicated `ccollector` user whose sandboxed systemd units hold just the narrow capabilities needed
