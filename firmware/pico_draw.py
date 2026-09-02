@@ -209,6 +209,11 @@ class PicoDraw:
             x = x - width
         elif align == "c":
             x = x - width / 2
+        # quantize the string ORIGIN: centring an odd width lands every glyph
+        # on a .5 phase, where round()'s half-to-even alternates direction per
+        # column — after an odd-advance glyph (aurora '1' = 5px) the next
+        # glyph rounds 1px closer and the pair fuses (glyphs touching)
+        x = round(x)
         y = round(y) - self._cap_top(resolved_font_key, pixel_size)
 
         effective_size = design_fonts.effective_text_size(resolved_font_key, pixel_size)
