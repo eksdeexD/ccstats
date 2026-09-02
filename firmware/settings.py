@@ -27,7 +27,7 @@ DEFAULTS = {
     "palette": "DEFAULT",  # palette preset name (theme.PALETTE_PRESETS)
     "font_preset": "preset1",  # type-scale preset key (type_scale.FONT_PRESETS)
     "sprite_name": "gloom",  # active avatar sprite (avatar_frames.SPRITES)
-    "brightness": 0.85,  # UI 0.0-1.0 over the USABLE backlight range (main.apply_brightness)
+    "brightness": 0.85,  # UI 0.0-1.0, driver-floored at the low end (main.apply_brightness)
     "dim_on_battery": True,  # battery drops the panel to the dimmest usable level
     "token_mode": "nocache",  # 'nocache' = input+output only; 'all' = + cache
     "boot_screen": "avatar",  # screen id shown after boot (names.py ids)

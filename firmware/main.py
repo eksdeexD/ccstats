@@ -35,20 +35,21 @@ from design_fonts import PRESS_START_2P, SILKSCREEN, effective_text_size
 WIFI_JOIN_TIMEOUT_SECONDS = 30  # total budget with a single configured network
 WIFI_CANDIDATE_TIMEOUT_SECONDS = 15  # per network when several are configured
 
-# The panel backlight is OFF below ~0.45 PWM duty (hardware floor, measured
-# on the LCD 2026-06-13) — the UI's 0-100% brightness spans the USABLE range
-# instead (settled with the user), so every step visibly changes something.
-BACKLIGHT_FLOOR = 0.45
+# Since badgeware v3 the display driver itself floors any NON-ZERO backlight
+# at its dimmest visible level (st7789 backlight_min, ~12.5% duty) and treats
+# 0.0 as panel OFF — so the stored 0..1 brightness passes straight through.
+# The minimum is clamped so a stored/legacy 0.0 can never turn the panel off.
+DIM_BRIGHTNESS = 0.15  # on-battery dim: any small value lands on the driver floor
+MIN_BRIGHTNESS = 0.05
 
 
 def apply_brightness(ui_fraction, dimmed=False):
-    """Map the stored 0..1 brightness onto the usable backlight range;
-    dimmed (battery) pins the dimmest readable level instead."""
+    """Apply the stored 0..1 brightness; dimmed (battery) pins the panel
+    to the driver's dimmest visible level instead."""
     if dimmed:
-        badgeware.set_brightness(BACKLIGHT_FLOOR)
+        badgeware.set_brightness(DIM_BRIGHTNESS)
         return
-    fraction = max(0.0, min(1.0, ui_fraction))
-    badgeware.set_brightness(BACKLIGHT_FLOOR + fraction * (1.0 - BACKLIGHT_FLOOR))
+    badgeware.set_brightness(max(MIN_BRIGHTNESS, min(1.0, ui_fraction)))
 
 # The splash: a CROPPED logo (not full-screen — images decode to 4 bytes/px,
 # and a small logo decodes in a fraction of the time), centred 18 px from

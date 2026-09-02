@@ -43,7 +43,21 @@ seat's session memory, not here.)
   overdraws the wide one (deer_diary 'W', advance 154 → -102, rendered as an
   unidentifiable merged symbol). `tools/build-fonts.py` now sizes the
   quantization grid by the widest corpus ADVANCE as well as the outline
-  extents — keep it that way when adding fonts.
+  extents — keep it that way when adding fonts. (Badgeware **v3** stores
+  advances as int16 and reads narrow fonts unsigned, fixing this
+  structurally — the build-fonts guard stays for old-firmware compat.)
+- **`measure_text` walked BYTES on badgeware v2, codepoints on v3.** On v2,
+  multi-byte UTF-8 glyphs (`•`, `×`, `→`) measured **0** and rendered with no
+  advance; v3 measures them correctly, so strings containing them got wider
+  at the v3 update (advance caches adapt at runtime — re-eyeball right-edge
+  fits after font/firmware changes).
+- **Centred/right-aligned text must quantize its ORIGIN to an integer**
+  (`pico_draw.text` does `x = round(x)` after the align adjust). Centring an
+  odd integer width lands every glyph on a .5 phase, where `round()`'s
+  half-to-even alternates direction per column — after an odd-advance glyph
+  (aurora_24 `1` = 5 px vs 8 px digits) the next glyph rounds 1 px closer
+  and the pair FUSES (found 2026-09-01: "11H" drew the 1 touching the H
+  while "10H" at another centre was clean).
 
 ## Input & rendering
 
@@ -56,13 +70,20 @@ seat's session memory, not here.)
   spam: the checkerboard bar fill is ONE `brush.pattern` shape call (8-row
   bitmap, anchored to screen origin — compensate tile parity from the element
   origin), not hundreds of 2x2 rects.
-- `color` objects have NO equality operator (`blank == blank` is False).
-  Compare packed values via `.p` (pixel scans, cap-top probe).
+- `color` objects had NO equality operator on badgeware v2 (`blank == blank`
+  was False); v3 added `__eq__`. We still compare packed values via `.p`
+  (pixel scans, cap-top probe) — it works on both and stays deliberate.
 - `badge.mode()` RECREATES the `screen` builtin — never hold a reference to
   `screen` across a mode switch. Boot is LORES 160x120; this firmware runs
   HIRES 320x240.
 - Set `screen.antialias = image.OFF` for the pixel look; set brightness
   explicitly at boot (the panel inherits whatever the previous app left).
+- **Brightness floor moved into the driver in badgeware v3**: the st7789
+  driver clamps any non-zero backlight to ~12.5% duty (`backlight_min`) and
+  treats `0.0` as panel OFF. The UI value passes straight through
+  (`main.apply_brightness`) — do NOT re-add an input remap (the old v2
+  0.45 remap would double-apply), and keep the editor floor > 0 or a user
+  can black out the panel.
 - **The contextual-B footer label is DUPLICATED — firmware and web have no
   shared source, so keep them in sync.** The firmware is authoritative: the
   real B behaviour and its label live in `B_HINTS`/`B_FLOWS` (+ per-screen
@@ -152,7 +173,8 @@ seat's session memory, not here.)
   connection (errors on a fresh connection propagate — the network is really
   down).
 - **There is no way to fetch off the input loop on this stack** (verified
-  2026-06-12): the badgeware 1.27 build has NO `_thread`, and MicroPython's
+  2026-06-12; still true on the v3/MicroPython-1.28 build): badgeware has NO
+  `_thread`, and MicroPython's
   ssl-over-asyncio streams BLOCK the scheduler during TLS work — a 10 ms
   ticker task got 48 beats during 6 s of async handshake+GET, so asyncio
   buys nothing. The working design is synchronous: warm GETs are shorter
@@ -182,6 +204,25 @@ seat's session memory, not here.)
   + `Navigation._charging_active()`). 4.05 V is effectively 100% for a Li-ion
   and sits well below the ~4.2 V charged rest voltage, so it triggers reliably
   without tripping mid-charge.
+- **The charger can also assert "charging" while delivering ZERO current**
+  (observed 2026-09-02: cell parked dead flat for 24+ h with STAT low —
+  charge-path hardware fault; the powered-off overnight test proved it was
+  not firmware). So the sweep additionally requires DEMONSTRATED progress:
+  `battery_gauge.charge_progressing()` starts pessimistic (boot and every
+  power edge) and turns True only after the smoothed voltage gains ≥10 mV,
+  re-stalling after 10 min of plateau. A genuine charge proves itself within
+  a minute or two; a dead charger never animates.
+- **`battery_voltage()` reads ~+88 mV HIGHER on badgeware v3 than v2** on the
+  same cell (A/B-tested minutes apart, 2026-09-02; identical Python read
+  path — the shift is below it). All gauge thresholds were calibrated on v2
+  readings, so on v3 they are ~2% optimistic: levels read slightly high and
+  `charged_full()`'s 4.05 V trips a bit earlier (~93% true charge — accepted,
+  user call). Recalibrate against v3 readings if precision starts to matter.
+- **`CHARGE_STAT` lives on the radio module (RM2/CYW43), not an RP2350 pin.**
+  Reading it before the wireless driver is up returns garbage that differs
+  between driver versions (bare-REPL reads said "not charging" on v2 and
+  "charging" on v3 for the same state). Only trust `is_charging()` from the
+  running app with the radio initialized.
 - **Voltage is a poor charge-level proxy *while charging*** (unlike on
   discharge). A Li-ion charge is CC→CV: voltage climbs to ~4.2 V fairly fast,
   then holds at ~4.2 V while current tapers and the last big chunk of capacity

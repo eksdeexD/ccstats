@@ -41,6 +41,7 @@ import sys
 import tempfile
 
 MENU_PATH = "/system/apps/menu/__init__.py"
+MENU_APP_PATH = "/system/apps/menu/app.py"  # holds the COLORS tile list
 PATCH_MARKER = "ccstats auto-boot"
 HOOK_LINE = "on_exit = run(update).result"
 
@@ -95,32 +96,33 @@ _ccstats_menu_update = update
 
 # the menu title-cases directory names ("ccstats" -> "Ccstats"); ours is an
 # acronym, so fix the scanned entry up after the fact. The icon TILE colour
-# is also pinned to the ccstats accent-1 orange (#ff6422): the menu picks
-# tile colours by grid slot from its bold/faded lists, so the original draw
+# is also pinned to the ccstats accent-1 orange (#ff6422): the badgeware-v3
+# menu picks tile colours by grid slot from its COLORS list (active/inactive
+# dimming is screen.alpha, no separate faded list), so the original draw
 # runs with this app's slot temporarily swapped (the icon.png glyph is dark
 # for contrast, like the logo).
-_ccstats_tile_bold = color.rgb(255, 100, 34)
-_ccstats_tile_faded = color.rgb(255, 100, 34, 120)
+_ccstats_tile_color = color.rgb(255, 100, 34)
 
-# the bold/faded tile-colour lists are APP.PY module globals — the original
-# draw() sees them from its own module scope; this block (menu __init__
-# scope) must reach them through the module object
+# the COLORS tile-colour list is an APP.PY module global — the original
+# draw() sees it from its own module scope; this block (menu __init__
+# scope) must reach it through the module object
 import app as _ccstats_menu_app_module
 
 for _ccstats_menu_app in apps.apps:
-    if _ccstats_menu_app.path == "ccstats":
+    # badgeware v3 stores app paths absolute ("/system/apps/ccstats");
+    # v2 stored the bare directory name — accept both
+    if _ccstats_menu_app.path in ("ccstats", _ccstats_boot_app):
         _ccstats_menu_app.name = "CCSTATS"
 
         def _ccstats_tile_draw(menu_app=_ccstats_menu_app):
             slot = menu_app.index % 6
-            bold = _ccstats_menu_app_module.bold
-            faded = _ccstats_menu_app_module.faded
-            bold_backup, faded_backup = bold[slot], faded[slot]
-            bold[slot], faded[slot] = _ccstats_tile_bold, _ccstats_tile_faded
+            colors = _ccstats_menu_app_module.COLORS
+            color_backup = colors[slot]
+            colors[slot] = _ccstats_tile_color
             try:
                 type(menu_app).draw(menu_app)
             finally:
-                bold[slot], faded[slot] = bold_backup, faded_backup
+                colors[slot] = color_backup
 
         _ccstats_menu_app.draw = _ccstats_tile_draw
 
@@ -179,6 +181,17 @@ def main():
         sys.exit(
             "could not find %r in the installed menu — the menu changed "
             "upstream; update this tool before patching" % HOOK_LINE
+        )
+    menu_app_source = subprocess.run(
+        [mpremote_binary, "cat", MENU_APP_PATH], capture_output=True, check=True
+    ).stdout.decode()
+    if "COLORS = [" not in menu_app_source:
+        # the injected tile-colour override swaps app.COLORS (badgeware v3's
+        # tile-colour model); patching a menu without it would crash the menu
+        # at boot, so refuse loudly here instead
+        sys.exit(
+            "the installed menu's app.py has no COLORS list — the menu's "
+            "tile-colour model changed upstream; update this tool before patching"
         )
 
     patched_source = menu_source.replace(HOOK_LINE, AUTO_BOOT_BLOCK + HOOK_LINE)

@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.5.0 — 2026-09-02
+
+Badgeware **firmware 3** compatibility for the Tufty badge, plus two independent rendering/power
+fixes found while validating the update. Firmware-only release — no server or pipeline changes, so
+stats boxes need nothing beyond the usual `git pull` (the deploy only refreshes `/viewscreens`).
+
+**Firmware 3 (v3.0.2 / MicroPython 1.28) support.** The firmware itself was already
+API-compatible (fonts, TLS, WiFi, graphics, State all verified); the two real changes:
+
+- `main.apply_brightness` no longer remaps the UI brightness onto a 0.45–1.0 usable band. v3's
+  display driver floors any non-zero backlight at its dimmest visible level itself, so the old
+  remap would double-apply and brighten the dim-on-battery mode; the UI value now passes straight
+  through, with a 5% floor (on v3, brightness 0.0 turns the panel fully off).
+- `tools/enable-autoboot.py` rewritten for the v3 launcher menu: app paths are absolute now, and
+  the tile-colour override targets the menu's single `COLORS` list (v2's `bold`/`faded` pair is
+  gone). The tool refuses loudly if the menu's colour model changes again. Re-run it after
+  flashing v3 — a firmware update always restores the stock menu.
+
+Updating the badge: back up your own files first (the update wipes the FAT filesystem —
+`/system/wifi.txt` in particular; `/secrets.py` and `/state/` live on the LittleFS volume, which
+survived the update in our testing, but back them up over `mpremote` anyway), flash the v3
+`with-filesystem` UF2, then reinstall with `tools/install-app.py` and re-run
+`tools/enable-autoboot.py`.
+
+**Centred-text glyph fusing fixed** (pre-existing, all firmware versions): centring a string of
+odd pixel width landed every glyph on a half-pixel phase, where rounding alternates direction per
+column — after a narrow odd-advance glyph (the digit `1`) the next glyph rounded one pixel closer
+and the pair fused (e.g. "11H" drew the `1` touching the `H`). The string origin is now quantized
+to an integer before glyphs are placed; verified by on-device pixel scan.
+
+**Charging sweep now requires demonstrated charge progress.** The charger asserts its "charging"
+line even when delivering no current (and never signals "done"), so the footer sweep could animate
+indefinitely. The gauge now tracks the smoothed voltage: the sweep shows only after a real rise
+(≥10 mV) and stops after a 10-minute plateau — a genuine charge proves itself within a minute or
+two, a stalled or faulty charger just shows the normal level bars. Note for v3: the badge reads
+`battery_voltage()` ~88 mV higher than v2 on the same cell, so the voltage-gated "full" icon
+triggers slightly earlier than before (~93% true charge).
+
 ## 1.4.1 — 2026-09-01
 
 Data-quality fix: long pasted content no longer inflates the typed word/char stats. Claude Code

@@ -47,7 +47,7 @@ OPTION_LABEL_X = 10
 OPTION_VALUE_RIGHT_X = 308
 
 ANIMATION_SPEED_STEPS = (0.5, 1.0, 1.5, 2.0)
-BRIGHTNESS_STEP = 0.05  # UI percent over the USABLE range (main.apply_brightness)
+BRIGHTNESS_STEP = 0.05  # UI percent, passed through to the driver (main.apply_brightness)
 
 
 def _draw_option_box(P, y, height, selected=False):
@@ -124,7 +124,8 @@ def _display_rows(navigation):
         import main
 
         value = settings.get("brightness") + direction * BRIGHTNESS_STEP
-        value = max(0.0, min(1.0, round(value * 100) / 100))
+        # floor 5%, not 0 — since badgeware v3, brightness 0.0 = panel OFF
+        value = max(0.05, min(1.0, round(value * 100) / 100))
         settings.update("brightness", value)
         # live and UNDIMMED so the arrows show the real level even on
         # battery; navigation re-applies the battery dim after the editor
