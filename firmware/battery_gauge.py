@@ -55,6 +55,19 @@ CUTOFF_MIN_SAMPLES = 3  # never power off on a single cold-boot reading
 # voltage, so it triggers reliably without tripping mid-charge.
 FULL_ON_USB_VOLTS = 4.05
 
+# The sweep should also only run while charge actually PROGRESSES. A healthy
+# charge lifts the smoothed voltage by tens of mV per window; a charger that
+# asserts CHARGE_STAT while delivering no current (observed 2026-09-02: cell
+# parked dead flat at ~3.93 V for 24+ h with "charging" asserted — charger
+# fault or worn pack) would otherwise sweep forever below the full gate.
+RISE_VOLTS = 0.01  # smoothed gain that counts as progress
+RISE_WINDOW_MS = 600000  # re-stall after this long without further progress
+# PESSIMISTIC: the sweep starts hidden (boot and every power edge) and shows
+# only once a rise is demonstrated — a genuine charge proves itself within a
+# minute or two, and a dead charger never gets to animate at all (user call
+# 2026-09-02: a sweep that is "essentially on all the time" is worse than a
+# level display).
+
 _SAMPLE_MILLISECONDS = 15000  # ADC read cadence
 _WINDOW = 8  # samples kept for the median (~2 min at 15 s)
 
@@ -62,6 +75,10 @@ _samples = []
 _last_sample_ticks = None
 _cells = None  # displayed bar count 0..4, None until the first sample primes it
 _critical_latched = False
+_rise_ref_v = None  # smoothed voltage the rise tracker measures progress from
+_rise_ref_ticks = None
+_rise_stalled = True  # pessimistic until a rise is demonstrated
+_last_usb = None
 
 
 def _median(values):
@@ -102,6 +119,26 @@ def sample_if_due():
     if len(_samples) > _WINDOW:
         _samples.pop(0)
     _recompute()
+    _track_rise(now)
+
+
+def _track_rise(now):
+    # progress = the smoothed voltage gaining RISE_VOLTS over the reference.
+    # A dip moves the reference DOWN without clearing a stall, so a charger
+    # cycling around the recharge threshold sweeps during genuine top-ups but
+    # a flatlined "charging" claim stalls out after RISE_WINDOW_MS.
+    global _rise_ref_v, _rise_ref_ticks, _rise_stalled
+    v = _median(_samples)
+    if _rise_ref_v is None or v >= _rise_ref_v + RISE_VOLTS:
+        if _rise_ref_v is not None:
+            _rise_stalled = False
+        _rise_ref_v = v
+        _rise_ref_ticks = now
+    elif v < _rise_ref_v:
+        _rise_ref_v = v
+        _rise_ref_ticks = now
+    elif now - _rise_ref_ticks >= RISE_WINDOW_MS:
+        _rise_stalled = True
 
 
 def prime():
@@ -110,10 +147,17 @@ def prime():
 
 
 def note_power(usb_connected):
-    """USB clears the critical latch (the cell is charging again)."""
-    global _critical_latched
+    """USB clears the critical latch (the cell is charging again); any power
+    edge re-arms the rise tracker so a fresh charge gets its optimistic
+    sweep while the evidence accumulates."""
+    global _critical_latched, _rise_ref_v, _rise_ref_ticks, _rise_stalled, _last_usb
     if usb_connected:
         _critical_latched = False
+    if usb_connected != _last_usb:
+        _last_usb = usb_connected
+        _rise_ref_v = None
+        _rise_ref_ticks = None
+        _rise_stalled = True  # every power edge re-proves itself
 
 
 def cells():
@@ -138,6 +182,18 @@ def charged_full():
     the charger never reports 'done' to us. False before priming."""
     v = voltage()
     return v is not None and v >= FULL_ON_USB_VOLTS
+
+
+def charge_progressing():
+    """True only while a claimed charge has demonstrated real progress —
+    the smoothed voltage gaining RISE_VOLTS — within the last
+    RISE_WINDOW_MS. Starts False (boot and every power edge): a genuine
+    charge proves itself within a minute or two of samples, while a
+    charger asserting CHARGE_STAT with no real current (this hardware,
+    observed 2026-09-02) never animates the sweep at all. A real charge
+    hits charged_full() long before its taper flattens below the
+    threshold."""
+    return not _rise_stalled
 
 
 def should_power_off(on_battery):

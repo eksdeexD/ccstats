@@ -313,10 +313,14 @@ class Navigation:
 
     def _charging_active(self):
         """Whether the charging sweep should show: genuinely charging AND not
-        yet full. The charger keeps reporting "charging" even at a full 4.22 V
-        cell (is_charging() never clears for us), so we drop the sweep once the
-        smoothed voltage says full and let the static level bars stand in."""
-        return badge.is_charging() and not battery_gauge.charged_full()
+        yet full AND actually making progress. The charger keeps reporting
+        "charging" even at a full 4.22 V cell (is_charging() never clears for
+        us) and can assert it with zero real charge current (observed
+        2026-09-02), so the sweep needs both the smoothed-voltage full gate
+        and the rise tracker; otherwise the static level bars stand in."""
+        return (badge.is_charging()
+                and not battery_gauge.charged_full()
+                and battery_gauge.charge_progressing())
 
     def _set_battery_painter(self, painter):
         painter.wifi_bars = wifi_signal.bars()
