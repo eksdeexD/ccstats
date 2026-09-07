@@ -50,6 +50,31 @@ info() { printf '  \033[36m·\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
+# ssh_check <ssh-cmd> <user@host> — probe the connection and explain WHY it failed (returns 1).
+# The old probe dropped ssh's stderr, so the one failure a user can't guess — a changed host key
+# (rebuilt VM, reused hostname) that StrictHostKeyChecking=accept-new refuses — hid behind a generic
+# "can't connect". Diagnoses: host-key mismatch (fingerprint + ssh-keygen -R fix), key refused
+# (bootstrap line not pasted), anything else (echo ssh's own message).
+ssh_check() {
+  local sshcmd="$1" target="$2" host="${2#*@}" err
+  err="$($sshcmd "$target" 'echo ok' 2>&1 >/dev/null)" && return 0
+  if grep -q "REMOTE HOST IDENTIFICATION HAS CHANGED\|Host key verification failed" <<<"$err"; then
+    printf '\033[31m✗ host key for %s does not match the one stored in /root/.ssh/known_hosts\033[0m\n' "$host" >&2
+    warn "This is expected if the remote was reinstalled or the hostname now points at a different machine."
+    warn "If you did NOT expect it, stop here — it can also mean a man-in-the-middle."
+    warn "Remote-reported fingerprint (compare it on the remote with: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub):"
+    grep -o 'SHA256:[A-Za-z0-9+/=]*' <<<"$err" | head -1 | sed 's/^/      /' >&2
+    warn "To accept the new key, drop the stale entry and re-run:"
+    printf '      ssh-keygen -R %q\n' "$host" >&2
+  elif grep -q "Permission denied" <<<"$err"; then
+    printf '\033[31m✗ %s refused the provisioning key — was the bootstrap line pasted on the remote (you should have seen BOOTSTRAP_OK)?\033[0m\n' "$target" >&2
+  else
+    printf '%s\n' "$err" | sed 's/^/      /' >&2
+    printf '\033[31m✗ can'"'"'t connect to %s (see ssh output above)\033[0m\n' "$target" >&2
+  fi
+  return 1
+}
+
 [ "$(id -u)" = 0 ] || die "run as root on the MAIN server:  sudo ./pipeline/provision-remote.sh"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 [ -f "$REPO/pipeline/extract.py" ] || die "can't find pipeline/extract.py next to this script ($REPO)"
@@ -122,6 +147,7 @@ if [ "${1:-}" = --update ]; then
       [ -f "$PROV_KEY" ] || die "missing provisioning key $PROV_KEY (re-add this remote)"
       SSHK="ssh -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
       SCPK="scp -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+      ssh_check "$SSHK" "$user@$host" || exit 1
       $SCPK "$REPO/pipeline/extract.py" "$user@$host:/tmp/ccstats-extract.py" >/dev/null
       $SCPK "$REPO/pipeline/pricing.json" "$user@$host:/tmp/ccstats-pricing.json" >/dev/null
       $SCPK "$REPO/monitor/usage-monitor.py" "$user@$host:/tmp/ccstats-usagemon.py" >/dev/null
@@ -184,6 +210,7 @@ if [ "${1:-}" = --enable-live ]; then
   PROV_KEY="$KEYDIR/${label}_provision"; [ -f "$PROV_KEY" ] || die "missing provisioning key for '$label'"
   SSHK="ssh -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
   SCPK="scp -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+  ssh_check "$SSHK" "$user@$host" || exit 1
 
   # ---- main side: drop-zone for shipped status + main monitor merges it ----
   b "1. Main side (drop-zone + merge)"
@@ -354,25 +381,7 @@ SSHK="ssh -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new
 SCPK="scp -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
 
 b "3. Connecting to $RUSER@$RHOST"
-# Keep ssh's stderr: the generic "can't connect" hides the one failure the user can't guess —
-# a changed host key (rebuilt VM, re-used hostname) that StrictHostKeyChecking=accept-new refuses.
-if ! PROBE_ERR="$($SSHK "$TARGET" 'echo ok' 2>&1 >/dev/null)"; then
-  if grep -q "REMOTE HOST IDENTIFICATION HAS CHANGED\|Host key verification failed" <<<"$PROBE_ERR"; then
-    printf '\033[31m✗ host key for %s does not match the one stored in /root/.ssh/known_hosts\033[0m\n' "$RHOST" >&2
-    warn "This is expected if the remote was reinstalled or the hostname now points at a different machine."
-    warn "If you did NOT expect it, stop here — it can also mean a man-in-the-middle."
-    warn "Remote-reported fingerprint (compare it on the remote with: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub):"
-    grep -o 'SHA256:[A-Za-z0-9+/=]*' <<<"$PROBE_ERR" | head -1 | sed 's/^/      /' >&2
-    warn "To accept the new key, drop the stale entry and re-run this script:"
-    printf '      ssh-keygen -R %q\n' "$RHOST" >&2
-    exit 1
-  elif grep -q "Permission denied" <<<"$PROBE_ERR"; then
-    die "SSH refused the provisioning key — was the bootstrap line pasted on the remote (you should have seen BOOTSTRAP_OK)?"
-  else
-    printf '%s\n' "$PROBE_ERR" | sed 's/^/      /' >&2
-    die "can't connect to $TARGET (see ssh output above)"
-  fi
-fi
+ssh_check "$SSHK" "$TARGET" || exit 1
 ok "connected"
 
 # ── copy code + generate the DATA key (as $RUSER, no sudo) so we can authorize it on main first ────

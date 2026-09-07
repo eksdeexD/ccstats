@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.1 — 2026-09-07
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**`provision-remote.sh` explains a changed remote host key** instead of failing with the generic
+"can't connect — was the bootstrap line pasted (BOOTSTRAP_OK)?". The connect probe discarded
+ssh's stderr, so a remote whose host key no longer matched `/root/.ssh/known_hosts` (reinstalled
+VM, hostname pointing at a different machine) was indistinguishable from a missing bootstrap
+line. The probe now lives in one `ssh_check` helper used by the add-remote, `--update` and
+`--enable-live` paths, and reports:
+
+- **host-key mismatch** — the fingerprint the remote presented, a reminder that an unexpected
+  change can mean a man-in-the-middle, how to compare it on the remote, and the exact
+  `ssh-keygen -R <host>` to run before retrying;
+- **key refused** (`Permission denied`) — the original bootstrap hint, now only for the case it
+  was written for;
+- **anything else** (timeout, DNS, refused) — ssh's own message, then "can't connect".
+
+`--update all` keeps its per-remote behaviour: a remote that fails the probe is reported and
+skipped, the others still update.
+
 ## 1.5.0 — 2026-09-02
 
 Badgeware **firmware 3** compatibility for the Tufty badge, plus two independent rendering/power
