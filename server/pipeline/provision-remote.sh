@@ -354,7 +354,25 @@ SSHK="ssh -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new
 SCPK="scp -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
 
 b "3. Connecting to $RUSER@$RHOST"
-$SSHK "$TARGET" 'echo ok' >/dev/null 2>&1 || die "can't connect — was the bootstrap line pasted (BOOTSTRAP_OK)?"
+# Keep ssh's stderr: the generic "can't connect" hides the one failure the user can't guess —
+# a changed host key (rebuilt VM, re-used hostname) that StrictHostKeyChecking=accept-new refuses.
+if ! PROBE_ERR="$($SSHK "$TARGET" 'echo ok' 2>&1 >/dev/null)"; then
+  if grep -q "REMOTE HOST IDENTIFICATION HAS CHANGED\|Host key verification failed" <<<"$PROBE_ERR"; then
+    printf '\033[31m✗ host key for %s does not match the one stored in /root/.ssh/known_hosts\033[0m\n' "$RHOST" >&2
+    warn "This is expected if the remote was reinstalled or the hostname now points at a different machine."
+    warn "If you did NOT expect it, stop here — it can also mean a man-in-the-middle."
+    warn "Remote-reported fingerprint (compare it on the remote with: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub):"
+    grep -o 'SHA256:[A-Za-z0-9+/=]*' <<<"$PROBE_ERR" | head -1 | sed 's/^/      /' >&2
+    warn "To accept the new key, drop the stale entry and re-run this script:"
+    printf '      ssh-keygen -R %q\n' "$RHOST" >&2
+    exit 1
+  elif grep -q "Permission denied" <<<"$PROBE_ERR"; then
+    die "SSH refused the provisioning key — was the bootstrap line pasted on the remote (you should have seen BOOTSTRAP_OK)?"
+  else
+    printf '%s\n' "$PROBE_ERR" | sed 's/^/      /' >&2
+    die "can't connect to $TARGET (see ssh output above)"
+  fi
+fi
 ok "connected"
 
 # ── copy code + generate the DATA key (as $RUSER, no sudo) so we can authorize it on main first ────
