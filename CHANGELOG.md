@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.5.2 — 2026-09-08
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Bugfix: `claude-fable-5-1` added to `server/pipeline/pricing.json`** ($10/$50 per MTok, cache
+read **$0.25**, cache write $12.50 — verified against the official pricing page). Fable 5.1 was
+missing, so every extract/competitor run logged `WARN: model 'claude-fable-5-1' not in pricing
+table` and costed its usage at the Opus 4.7 fallback rates ($5/$25, cache read $0.50, cache write
+$6.25) — input, output and cache-write cost halved, cache-read cost doubled. Note the cache-read
+rate: Fable 5.1 prices cache hits at 0.025× input (a quarter of Fable 5's $1.00), not the usual
+0.1× — the pricing playbook in `CLAUDE.md` no longer assumes the 0.1× ratio.
+
+**Bugfix: `claude-sonnet-5` corrected to $2/$10 per MTok** (cache read $0.20, cache write $2.50).
+The table carried the $3/$15 "standard" rate on the assumption the launch pricing would end on
+2026-08-31; Anthropic has since made $2/$10 the standard price and cancelled the increase, so the
+old entry overestimated Sonnet 5 cost by 50% across its whole history.
+
+Cost is recomputed from the ledger's per-model token counts each run, so deploying this
+retroactively corrects all historical Fable 5.1 and Sonnet 5 cost. Apply with the normal
+`git pull && ./server/deploy.sh` (as `slate`); fragments get the updated table via
+`./server/pipeline/provision-remote.sh --update all` from main (provision-remote ships
+`pricing.json` alongside `extract.py`).
+
+Known remaining gap (not fixed here, tracked in `TODO.md`): every cache write is priced at the
+5-minute rate (1.25× input), but Claude Code's usage records split `cache_creation` into
+`ephemeral_5m_input_tokens` / `ephemeral_1h_input_tokens`, and the 1-hour writes cost 2× input.
+Local transcripts on the dev seat show ~89% of Fable 5 cache-write tokens are 1-hour writes, so
+cache-write cost is under-counted by roughly a third on that model. Fixing it needs a new ledger
+column, so it is a separate change.
+
 ## 1.5.1 — 2026-09-07
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
