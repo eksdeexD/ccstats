@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.5 — 2026-09-08
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Bugfix: `deploy.sh` now keeps systemd units (and the logrotate policy) in step with the repo.**
+1.5.4's `--history-db` never took effect on a box updated with a non-root deploy: unit files were
+only rendered inside the one-time de-root step, so the code was current while
+`ccstats-usage.service` kept its old `ExecStart` — the `limit_readings` table was never created.
+The same gap silently kept the old 8-generation logrotate policy. Now:
+
+- Every deploy on a migrated box renders each installed unit's template and compares it with
+  `/etc/systemd/system/<unit>` (the live monitor's per-box `ExecStart` is preserved, as before).
+  A **root** run re-installs the ones that differ, runs `daemon-reload`, and restarts the two
+  daemons if their units changed. A **non-root** run cannot write `/etc`, so it ends with a loud
+  banner listing the stale units / logrotate policy and asks for one `sudo ./server/deploy.sh`.
+  Up-to-date boxes print `units: up to date with templates`.
+- **To pick up 1.5.4 on an existing box:** `git pull && sudo ./server/deploy.sh` once. The table
+  appears at the next 2-minute tick.
+- README: the `limit_readings` example now uses python's `sqlite3` module (the CLI isn't
+  necessarily installed) and runs as `ccollector`.
+
 ## 1.5.4 — 2026-09-08
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).

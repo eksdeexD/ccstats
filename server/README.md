@@ -54,6 +54,10 @@ This repo is **code + templates only**. Secrets and per-machine data live **outs
 
 If anything secret ever gets committed, rotate it and scrub git history (`git filter-repo`).
 `deploy.sh` updates **code only** and never overwrites your config, token, or ledger.
+On a de-rooted box it can run **without sudo** (the operator owns the code files), but the
+root-owned pieces — systemd unit files and the logrotate policy — are only written by a root run.
+Every deploy compares them with the repo's templates: a root run re-installs what differs, a
+non-root run ends with a banner listing what is stale and asks for one `sudo ./server/deploy.sh`.
 
 ---
 
@@ -147,9 +151,13 @@ root. Don't `cd server` — several referenced paths live above it.
         served reading is appended to a `limit_readings` table in the ledger (UTC `ts`, `server`,
         `stale`, session/weekly `_pct` + `_resets_at`, extra-usage credits, limit-hit counts) —
         backed up with the ledger, no log parsing needed. Consecutive identical stale readings
-        collapse to one row. Example: `sqlite3 /opt/claude-stats/ledger.db "SELECT ts, session_pct,
-        weekly_pct FROM limit_readings WHERE stale=0 AND ts >= date('now','-7 days')"` (run as
-        `ccollector` or a member of its group). Remotes don't record — MAIN stores the merged reading.
+        collapse to one row. Remotes don't record — MAIN stores the merged reading. Query it as
+        `ccollector` (the ledger is `640`); the `sqlite3` CLI may not be installed, python always is:
+        ```
+        sudo -u ccollector python3 -c 'import sqlite3; [print(r) for r in sqlite3.connect("/opt/claude-stats/ledger.db").execute("SELECT ts, server, stale, session_pct, weekly_pct FROM limit_readings ORDER BY id DESC LIMIT 20")]'
+        ```
+        The flag lives in the **unit file**, so a box updated with a non-root deploy needs one
+        `sudo ./server/deploy.sh` before it takes effect (deploy.sh tells you — see below).
     - **Durable bottleneck monitor:** install `server/monitor/bottleneck-monitor.py` → `/opt/claude-stats/`,
       then run `sudo ./server/deploy.sh` — it renders + enables the de-rooted
       `claude-bottleneck-monitor` unit. It banks cumulative **HUMAN BOTTLENECK**

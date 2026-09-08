@@ -18,6 +18,11 @@
 #                                           # already-migrated box where the operator
 #                                           # owns the /opt/claude-stats code files
 #
+# Root-owned pieces (systemd unit files, /etc/logrotate.d/ccstats) can only be written by a
+# root run. Since v1.5.5 every deploy on a migrated box compares the rendered templates with
+# what is installed: a root run re-installs any that differ (+ daemon-reload), a non-root run
+# ends with a loud "run once as root" banner listing them — never silently stale.
+#
 # Updates code ONLY for the components that are already installed. It NEVER touches your
 # per-machine state — config.json, token.txt, ledger.db, or the generated JSON are left alone,
 # so your settings and all-time stats survive every update.
@@ -55,6 +60,9 @@ migrated() { id ccollector >/dev/null 2>&1 && [ -f /etc/systemd/system/ccstats-e
 sysctl_priv() {
     if [ "$ROOT" = 1 ]; then systemctl "$@"; else sudo -n systemctl "$@" 2>/dev/null; fi
 }
+# root-only pieces a non-root deploy could not refresh — reported in one banner at the end
+NEEDS_ROOT=()
+need_root() { NEEDS_ROOT+=("$1"); }
 # web-asset install: www-data-owned when root (legacy layout). Non-root: overwrite
 # IN PLACE (cp truncates; install would unlink+recreate, which needs dir write the
 # operator doesn't have in the ccollector-owned webroot).
@@ -173,6 +181,8 @@ if [ "$ROOT" = 1 ]; then
         echo "  ⚠ NOTE: /etc/logrotate.d not found — install the 'logrotate' package, else"
         echo "          the pipeline logs will grow without bound."
     fi
+elif ! cmp -s "$REPO/logrotate/ccstats.conf" /etc/logrotate.d/ccstats 2>/dev/null; then
+    need_root "logrotate policy /etc/logrotate.d/ccstats (repo version differs)"
 fi
 
 # ───────────────────────────── v1.2.1 de-root migration ─────────────────────────────
@@ -184,15 +194,62 @@ render() { # render <template> — substitute @OPT@/@WEB@/@SERVER@
     sed -e "s|@OPT@|$OPT|g" -e "s|@WEB@|$WEB|g" -e "s|@SERVER@|$SERVER|g" "$1"
 }
 
-install_unit() { # install_unit <template-basename> <unit-name> [preserved-execstart]
-    local tpl="$REPO/systemd/$1" unit="/etc/systemd/system/$2" exec_line="${3:-}"
-    [ -f "$unit" ] && cp -a "$unit" "$QUAR/" 2>/dev/null || true
+render_unit() { # render_unit <template-basename> [preserved-execstart] — rendered unit on stdout
+    local tpl="$REPO/systemd/$1" exec_line="${2:-}"
     if [ -n "$exec_line" ]; then
-        render "$tpl" | awk -v repl="$exec_line" '{ if ($0 ~ /^ExecStart=/) print repl; else print $0 }' > "$unit.tmp"
+        render "$tpl" | awk -v repl="$exec_line" '{ if ($0 ~ /^ExecStart=/) print repl; else print $0 }'
     else
-        render "$tpl" > "$unit.tmp"
+        render "$tpl"
     fi
+}
+
+install_unit() { # install_unit <template-basename> <unit-name> [preserved-execstart]
+    local unit="/etc/systemd/system/$2"
+    # derootify archives the previous unit into its quarantine dir; refresh_units has none
+    if [ -f "$unit" ] && [ -n "${QUAR:-}" ]; then cp -a "$unit" "$QUAR/" 2>/dev/null || true; fi
+    render_unit "$1" "${3:-}" > "$unit.tmp"
     mv "$unit.tmp" "$unit"; chmod 644 "$unit"
+}
+
+# Every unit deploy.sh owns, in install order. The live monitor's ExecStart carries per-box args
+# (provision-remote.sh --enable-live adds --merge-dir etc.), so the installed line is preserved.
+ALL_UNITS="ccstats-scope-refresh.service ccstats-scope-refresh.path ccstats-scope-refresh.timer
+ccstats-extract.service ccstats-extract.timer ccstats-backup.service
+ccstats-usage.service ccstats-usage.timer ccstats-competitor.service ccstats-competitor.timer
+claude-live-monitor.service claude-bottleneck-monitor.service"
+
+preserved_exec() { # preserved_exec <unit-name> — the ExecStart to keep, or empty
+    if [ "$1" = claude-live-monitor.service ] && [ -f "/etc/systemd/system/$1" ]; then
+        grep -h '^ExecStart=' "/etc/systemd/system/$1" | tail -1 || true
+    fi
+}
+
+# Migrated boxes, every deploy: an installed unit whose content differs from its rendered template
+# is re-installed (root) or reported (non-root). Before v1.5.5 units were only rendered inside
+# derootify(), so a template change (new ExecStart flag, tightened sandbox) never reached a box
+# updated with a non-root or --no-migrate deploy — the code was current, the unit stale, silently.
+refresh_units() {
+    local u unit stale=""
+    for u in $ALL_UNITS; do
+        unit="/etc/systemd/system/$u"
+        [ -f "$unit" ] || continue     # not installed on this box (optional component)
+        if ! render_unit "$u.template" "$(preserved_exec "$u")" | cmp -s - "$unit"; then
+            stale="$stale $u"
+        fi
+    done
+    if [ -z "$stale" ]; then echo "units: up to date with templates"; return 0; fi
+    if [ "$ROOT" = 1 ]; then
+        for u in $stale; do install_unit "$u.template" "$u" "$(preserved_exec "$u")"; done
+        systemctl daemon-reload
+        echo "updated: systemd units —$stale (daemon-reload done; timers use the new units from their next tick)"
+        for u in $stale; do
+            case "$u" in claude-live-monitor.service|claude-bottleneck-monitor.service)
+                systemctl try-restart "${u%.service}" 2>/dev/null && echo "restarted: ${u%.service}" || true;;
+            esac
+        done
+    else
+        need_root "systemd units:$stale (template changed — new flags/sandboxing NOT in effect)"
+    fi
 }
 
 print_fallback_banner() {
@@ -375,6 +432,9 @@ elif [ "$ROOT" = 1 ]; then
     echo "de-root: skipped (--no-migrate)"
 fi
 
+# keep the installed units in step with the templates (no-op right after derootify)
+if migrated; then refresh_units; fi
+
 # pick up the latest stats immediately
 if migrated; then
     sysctl_priv start ccstats-extract.service && echo "regenerated claude-stats.json (ccstats-extract)" \
@@ -400,3 +460,11 @@ if [ "$ROOT" = 1 ] && command -v nginx >/dev/null && nginx -t >/dev/null 2>&1; t
     systemctl reload nginx && echo "nginx reloaded"
 fi
 echo "deploy done — code updated; config.json / token.txt / ledger.db untouched."
+if [ ${#NEEDS_ROOT[@]} -gt 0 ]; then
+    echo
+    echo "════════════ ⚠ ROOT-OWNED PIECES ARE STALE — run once:  sudo ./server/deploy.sh ════════════"
+    for item in "${NEEDS_ROOT[@]}"; do echo "  • $item"; done
+    echo "  This non-root deploy updated the code but cannot write /etc. Until a root run installs"
+    echo "  the above, the running services keep their OLD unit definitions / rotation policy."
+    echo "═══════════════════════════════════════════════════════════════════════════════════════════"
+fi
