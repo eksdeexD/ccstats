@@ -19,6 +19,8 @@ sudo ./server/pipeline/provision-remote.sh --update <label>|all   # re-push code
 Run `sudo ./server/pipeline/provision-remote.sh` on main. It asks for:
 
 - **`user@host`** — your normal SSH login on the remote (e.g. `you@server2.example.net`). A sudo-capable user.
+- **SSH port** — defaults to 22. Set it when the remote is reached through a non-default port, e.g.
+  two machines behind one NAT where port 22 forwards to one and 20022 to the other.
 - **label** — short unique name for the server (the ledger key prefix; `main` is reserved).
 - **timezone** — defaults to main's (match it so the rhythm histograms line up).
 - **main domain** — this server's **stable DOMAIN** the remote uploads to (e.g. `stats.example.net`).
@@ -95,6 +97,11 @@ registered remote and (if the live channel is enabled for it) restarts the monit
 the peer de-root migration (no-op re-verify on already-migrated peers, full migration on legacy
 root-cron ones). You enter each remote's sudo password once. The registry
 (`/opt/claude-stats/remotes.d/`) is the source of truth for which remotes exist.
+
+Each `<label>.conf` is a plain `key=value` file you can edit by hand — for example to change the
+SSH port of an already-provisioned remote, set or add a `port=20022` line (a missing `port=` line
+means 22; entries written before v1.5.3 have none). `--update` and `--enable-live` pick it up on
+their next run, and `--list` shows the port whenever it isn't 22.
 
 ## How `statsuser` is locked down
 

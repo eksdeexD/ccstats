@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.3 — 2026-09-08
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Per-remote SSH port for `provision-remote.sh`.** Two machines behind one NAT can't both be reached
+on port 22, and the registry had no way to say otherwise. Now:
+
+- Adding a remote asks for its SSH port (default 22) right after `user@host`, and records it as a
+  `port=` line in `/opt/claude-stats/remotes.d/<label>.conf`.
+- `--update` and `--enable-live` read `port=` from the entry and pass it to every ssh/scp call
+  (`-p` / `-P`). Existing entries have no `port=` line and keep using 22 — nothing to migrate. To
+  move an already-provisioned remote to another port, add `port=20022` to its `.conf` by hand.
+- `--list` shows `host:port` when the port isn't 22.
+- The host-key-mismatch diagnosis prints the matching `ssh-keygen -R '[host]:port'` for non-22
+  entries (known_hosts keys those differently), and the "remote log" hints include `-p`.
+
+The upload direction (remote → main over sftp) is unchanged and still expects main on port 22.
+
 ## 1.5.2 — 2026-09-08
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).

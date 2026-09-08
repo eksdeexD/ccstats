@@ -284,7 +284,7 @@ total. One interactive script on **main** does the whole setup — and the same 
 after a code change. Full details: [`docs/remote-fragment.md`](docs/remote-fragment.md).
 
 ```bash
-# add a remote (asks for user@host, a label, timezone, and THIS server's DOMAIN — not its IP)
+# add a remote (asks for user@host, its SSH port [22], a label, timezone, and THIS server's DOMAIN — not its IP)
 sudo ./server/pipeline/provision-remote.sh
 
 # list / update provisioned remotes (run after changing pipeline code, e.g. tuned detection)
@@ -299,7 +299,8 @@ sudo ./server/pipeline/provision-remote.sh --enable-live <label>
   **once** per run. Adding a 3rd/4th server is the same command with a new host + label.
 - **Locked-down receiver:** remotes upload over **sftp-only** into a `statsuser` whose only writable
   path is `fragments/` (key pinned to `internal-sftp`, no shell). The remote needs no GitHub access —
-  code is copied from main, and a registry under `/opt/claude-stats/remotes.d/` tracks every remote.
+  code is copied from main, and a registry under `/opt/claude-stats/remotes.d/` tracks every remote
+  (plain `key=value` files; add `port=20022` to a remote's entry to reach it on a non-default port).
 - **Cadence:** usage ships every minute. A separate, faster **~2 s working/idle/waiting** status channel
   (it drives `/livetest` and the `/viewscreens` avatar) is available — enable it per remote with
   `--enable-live <label>` (above). It ships only while a session is active, over a multiplexed SSH

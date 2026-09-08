@@ -50,13 +50,15 @@ info() { printf '  \033[36m·\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
-# ssh_check <ssh-cmd> <user@host> — probe the connection and explain WHY it failed (returns 1).
+# ssh_check <ssh-cmd> <user@host> [port] — probe the connection and explain WHY it failed (returns 1).
 # The old probe dropped ssh's stderr, so the one failure a user can't guess — a changed host key
 # (rebuilt VM, reused hostname) that StrictHostKeyChecking=accept-new refuses — hid behind a generic
 # "can't connect". Diagnoses: host-key mismatch (fingerprint + ssh-keygen -R fix), key refused
 # (bootstrap line not pasted), anything else (echo ssh's own message).
 ssh_check() {
-  local sshcmd="$1" target="$2" host="${2#*@}" err
+  local sshcmd="$1" target="$2" host="${2#*@}" port="${3:-22}" err
+  # known_hosts keys a non-default port as "[host]:port" — the -R hint must match that form
+  local khost="$host"; [ "$port" = 22 ] || khost="[$host]:$port"
   err="$($sshcmd "$target" 'echo ok' 2>&1 >/dev/null)" && return 0
   if grep -q "REMOTE HOST IDENTIFICATION HAS CHANGED\|Host key verification failed" <<<"$err"; then
     printf '\033[31m✗ host key for %s does not match the one stored in /root/.ssh/known_hosts\033[0m\n' "$host" >&2
@@ -65,7 +67,7 @@ ssh_check() {
     warn "Remote-reported fingerprint (compare it on the remote with: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub):"
     grep -o 'SHA256:[A-Za-z0-9+/=]*' <<<"$err" | head -1 | sed 's/^/      /' >&2
     warn "To accept the new key, drop the stale entry and re-run:"
-    printf '      ssh-keygen -R %q\n' "$host" >&2
+    printf '      ssh-keygen -R %q\n' "$khost" >&2
   elif grep -q "Permission denied" <<<"$err"; then
     printf '\033[31m✗ %s refused the provisioning key — was the bootstrap line pasted on the remote (you should have seen BOOTSTRAP_OK)?\033[0m\n' "$target" >&2
   else
@@ -74,6 +76,17 @@ ssh_check() {
   fi
   return 1
 }
+
+# ssh_cmds <provision-key> [port] — set SSHK/SCPK (ssh takes -p, scp takes -P). Port defaults to
+# 22 so registry entries written before v1.5.3 (no port= line) keep working unchanged.
+ssh_cmds() {
+  local key="$1" port="${2:-22}"
+  SSHK="ssh -i $key -p $port -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+  SCPK="scp -i $key -P $port -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+}
+# ssh_hint <user@host> [port] — how a human would ssh there (for the log/copy-paste hints)
+ssh_hint() { local port="${2:-22}"; if [ "$port" = 22 ]; then echo "ssh $1"; else echo "ssh -p $port $1"; fi; }
+valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
 
 [ "$(id -u)" = 0 ] || die "run as root on the MAIN server:  sudo ./pipeline/provision-remote.sh"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -125,7 +138,8 @@ if [ "${1:-}" = --list ]; then
   shopt -s nullglob
   found=0
   for f in "$REG"/*.conf; do
-    found=1; ( . "$f"; printf '  %-14s %s@%s  -> %s  (live=%s)\n' "$label" "$user" "$host" "$main_domain" "${live:-0}" )
+    found=1; ( . "$f"; p="${port:-22}"; hp="$host"; [ "$p" = 22 ] || hp="$host:$p"
+               printf '  %-14s %s@%s  -> %s  (live=%s)\n' "$label" "$user" "$hp" "$main_domain" "${live:-0}" )
   done
   [ "$found" = 1 ] || echo "no remotes provisioned yet"
   exit 0
@@ -142,12 +156,12 @@ if [ "${1:-}" = --update ]; then
   for f in "${confs[@]}"; do
     ( set -e
       . "$f"
-      b "Updating '$label' ($user@$host) — you'll be asked for its sudo password once"
+      port="${port:-22}"; valid_port "$port" || die "bad port= in $f: '$port'"
+      b "Updating '$label' ($user@$host, port $port) — you'll be asked for its sudo password once"
       PROV_KEY="$KEYDIR/${label}_provision"
       [ -f "$PROV_KEY" ] || die "missing provisioning key $PROV_KEY (re-add this remote)"
-      SSHK="ssh -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
-      SCPK="scp -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
-      ssh_check "$SSHK" "$user@$host" || exit 1
+      ssh_cmds "$PROV_KEY" "$port"
+      ssh_check "$SSHK" "$user@$host" "$port" || exit 1
       $SCPK "$REPO/pipeline/extract.py" "$user@$host:/tmp/ccstats-extract.py" >/dev/null
       $SCPK "$REPO/pipeline/pricing.json" "$user@$host:/tmp/ccstats-pricing.json" >/dev/null
       $SCPK "$REPO/monitor/usage-monitor.py" "$user@$host:/tmp/ccstats-usagemon.py" >/dev/null
@@ -208,9 +222,9 @@ if [ "${1:-}" = --enable-live ]; then
   CONF="$REG/$EL.conf"; [ -f "$CONF" ] || die "no such remote '$EL' (try --list)"
   . "$CONF"
   PROV_KEY="$KEYDIR/${label}_provision"; [ -f "$PROV_KEY" ] || die "missing provisioning key for '$label'"
-  SSHK="ssh -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
-  SCPK="scp -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
-  ssh_check "$SSHK" "$user@$host" || exit 1
+  port="${port:-22}"; valid_port "$port" || die "bad port= in $CONF: '$port'"
+  ssh_cmds "$PROV_KEY" "$port"
+  ssh_check "$SSHK" "$user@$host" "$port" || exit 1
 
   # ---- main side: drop-zone for shipped status + main monitor merges it ----
   b "1. Main side (drop-zone + merge)"
@@ -311,7 +325,7 @@ ELR
   b "✓ Live channel enabled for '$label'."
   info "Status ships up only while a session is active (tunnel drops ~30 min after the last one)."
   info "Watch: the /livetest page should show '$label' within a few seconds of activity there."
-  info "Remote monitor log: ssh $user@$host 'sudo tail -f /var/log/ccstats/live-monitor.log' (journalctl -u claude-live-monitor on a root-mode peer)"
+  info "Remote monitor log: $(ssh_hint "$user@$host" "$port") 'sudo tail -f /var/log/ccstats/live-monitor.log' (journalctl -u claude-live-monitor on a root-mode peer)"
   info "⚠ Verify the process matcher on the remote (how 'claude' appears in /proc) if it never shows working."
   exit 0
 fi
@@ -323,10 +337,13 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
 b "Add a remote Claude Code server as a fragment node"
 echo
-read -rp "Your SSH login on the remote as user@host, e.g. you@server2.example.net : " TARGET
+read -rp "Your SSH login on the remote as user@host (no port here — asked next), e.g. you@server2.example.net : " TARGET
 [ -n "${TARGET:-}" ] || die "user@host is required"
 [[ "$TARGET" == *@* ]] || die "expected user@host (e.g. you@server2.example.net)"
 RUSER="${TARGET%@*}"; RHOST="${TARGET#*@}"
+[[ "$RHOST" != *:* ]] || die "give the port in the next prompt, not as host:port"
+read -rp "SSH port on the remote [22] (e.g. a NAT-forwarded port like 20022)     : " PORT_IN
+RPORT="${PORT_IN:-22}"; valid_port "$RPORT" || die "port must be a number 1-65535"
 read -rp "Short unique label for this server (a-z0-9-), e.g. server2        : " LABEL
 [[ "$LABEL" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "label must be lower-case letters/digits/hyphens"
 [ "$LABEL" != main ] || die "'main' is reserved for this server — pick another label"
@@ -346,7 +363,7 @@ MAIN_DOMAIN="${DOMAIN_IN:-$DEF_DOMAIN}"
 
 echo
 b "Plan"
-info "login (provision): $RUSER@$RHOST   (sudo password asked ONCE; no passwordless sudo configured)"
+info "login (provision): $RUSER@$RHOST port $RPORT   (sudo password asked ONCE; no passwordless sudo configured)"
 info "label / tz        : $LABEL / $TZ_NAME"
 info "data flow         : $RHOST  --every-min sftp-->  $MAIN_DOMAIN:{fragments,limits-remote}/$LABEL.json"
 info "remote gets       : /opt/claude-stats/{extract.py,pricing.json,usage-monitor.py,config.json,ship-fragment.sh} + logrotate; source copies in /home/ccstats"
@@ -366,7 +383,7 @@ PROV_PUB="$(cat "$PROV_KEY.pub")"
 # bootstrap line: pure authorized_keys append into the user's OWN home — no sudo, no new user, no sudoers
 BOOTSTRAP="mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\n' '$PROV_PUB' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo BOOTSTRAP_OK"
 echo
-b "2. ►► COPY-PASTE THIS on the remote (log in as $RUSER@$RHOST however you normally do):"
+b "2. ►► COPY-PASTE THIS on the remote (log in with '$(ssh_hint "$RUSER@$RHOST" "$RPORT")' or however you normally do):"
 echo
 echo "--------------------------------------------------------------------------------"
 echo "$BOOTSTRAP"
@@ -377,11 +394,10 @@ info "You should see 'BOOTSTRAP_OK'. (The script creates the ccstats/statsuser a
 echo
 read -rp "Done? Press Enter to continue (Ctrl-C to abort) "
 
-SSHK="ssh -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
-SCPK="scp -i $PROV_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15"
+ssh_cmds "$PROV_KEY" "$RPORT"
 
-b "3. Connecting to $RUSER@$RHOST"
-ssh_check "$SSHK" "$TARGET" || exit 1
+b "3. Connecting to $RUSER@$RHOST (port $RPORT)"
+ssh_check "$SSHK" "$TARGET" "$RPORT" || exit 1
 ok "connected"
 
 # ── copy code + generate the DATA key (as $RUSER, no sudo) so we can authorize it on main first ────
@@ -508,6 +524,7 @@ cat > "$REG/$LABEL.conf" <<CONF
 label=$LABEL
 user=$RUSER
 host=$RHOST
+port=$RPORT
 main_domain=$MAIN_DOMAIN
 timezone=$TZ_NAME
 live=0
@@ -519,5 +536,5 @@ info "Stats fragment + limits reading ship every minute; --mode full folds stats
 info "  MAIN's usage-monitor --merge-dir serves this box's limits whenever it has the active session."
 info "Update its code later:   sudo $0 --update $LABEL    (or --update all)"
 info "List remotes:            sudo $0 --list"
-info "Remote log:              ssh $TARGET 'sudo tail -f /var/log/ccstats/fragment.log'"
+info "Remote log:              $(ssh_hint "$TARGET" "$RPORT") 'sudo tail -f /var/log/ccstats/fragment.log'"
 info "  (root-mode fallback peers log to /var/log/ccstats-fragment.log instead)"
