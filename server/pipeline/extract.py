@@ -1617,12 +1617,14 @@ def run_full(args, generated_at):
     pricing, pricing_date = load_pricing(args.pricing)
     if os.path.exists(args.ledger):
         try:
-            shutil.copy2(args.ledger, args.ledger + ".bak")  # cheap rolling one-step undo
+            # cheap rolling one-step undo — via the online backup API, not a raw file copy: the
+            # usage poller may commit a limit_readings row at any moment (see usage-monitor.py).
+            _online_backup(args.ledger, args.ledger + ".bak")
             try:
                 os.chmod(args.ledger + ".bak", 0o640)  # the .bak holds the same detail — same lockdown as the ledger
             except OSError:
                 pass
-        except OSError as e:
+        except (OSError, sqlite3.Error) as e:
             warn("ledger backup failed (%s)" % e)
         maybe_snapshot(args)  # retained son-tier snapshot (age-gated 3h; GFS retention — see Backups above)
     con = open_ledger(args.ledger)

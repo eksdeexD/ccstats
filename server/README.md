@@ -99,8 +99,9 @@ root. Don't `cd server` — several referenced paths live above it.
      `docs/migrate-derootify.md` (what it does; manual fallback if it reports a skip/failure).
    - **Log rotation is automatic**: `deploy.sh` installs `/etc/logrotate.d/ccstats`, which rotates
      `/var/log/ccstats/*.log` (and legacy `/var/log/claude-stats*.log`) via the distro's
-     logrotate.timer / cron.daily — `logrotate` is part of the Debian/Ubuntu base. Remotes get
-     their own `/etc/logrotate.d/ccstats-fragment` from the provision script.
+     logrotate.timer / cron.daily — `logrotate` is part of the Debian/Ubuntu base. Weekly, 52
+     generations kept (~a year; the logs are tiny). Remotes get their own
+     `/etc/logrotate.d/ccstats-fragment` from the provision script.
 7. **Serve it** (if chosen): render `server/nginx/stats-site.conf.template` (replace `__DOMAIN__`,
    `__TOKEN__`, `__WEBROOT__`=`/var/www/stats`), **delete the location blocks for features not
    installed**, symlink into `sites-enabled`, `nginx -t`, reload. If a domain:
@@ -142,6 +143,13 @@ root. Don't `cd server` — several referenced paths live above it.
         fragment nodes ship there every minute (set up automatically by `provision-remote.sh`). So the
         USAGE screen stays live whenever a session is active on **any** box — MAIN never needs its own
         active token. `deploy.sh` creates the `limits-remote/` drop-zone; an empty dir is harmless.
+      - **Reading history:** the unit passes `--history-db /opt/claude-stats/ledger.db`, so every
+        served reading is appended to a `limit_readings` table in the ledger (UTC `ts`, `server`,
+        `stale`, session/weekly `_pct` + `_resets_at`, extra-usage credits, limit-hit counts) —
+        backed up with the ledger, no log parsing needed. Consecutive identical stale readings
+        collapse to one row. Example: `sqlite3 /opt/claude-stats/ledger.db "SELECT ts, session_pct,
+        weekly_pct FROM limit_readings WHERE stale=0 AND ts >= date('now','-7 days')"` (run as
+        `ccollector` or a member of its group). Remotes don't record — MAIN stores the merged reading.
     - **Durable bottleneck monitor:** install `server/monitor/bottleneck-monitor.py` → `/opt/claude-stats/`,
       then run `sudo ./server/deploy.sh` — it renders + enables the de-rooted
       `claude-bottleneck-monitor` unit. It banks cumulative **HUMAN BOTTLENECK**

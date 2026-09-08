@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.4 — 2026-09-08
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Limits readings get a real home, and logs keep a year.**
+
+- **`limit_readings` table in the ledger.** `usage-monitor.py --history-db <ledger.db>` appends
+  every *served* reading (after the cross-server merge, so it's the authoritative account-wide
+  number) to a small table in `ledger.db`: UTC `ts`, `server`/`source`, `stale`, session/weekly/
+  opus/sonnet utilization + `resets_at`, extra-usage credits, limit-hit counts. Consecutive
+  identical stale readings collapse to one row (an idle night is one row, not 300). Analyses like
+  "how often do I hit the session cap" are now a SQL query instead of a log parse, and the readings
+  ride along in the ledger's snapshot backups. The write is best-effort: a DB error is logged and
+  never blocks the feed. `ccstats-usage.service` on MAIN passes the flag; remotes don't (main
+  records the merged reading). `deploy.sh` re-renders the unit — nothing to migrate; the table is
+  created on first run.
+- **`ledger.db.bak` is now taken with the SQLite online backup API** instead of a raw file copy,
+  since the ledger now has a second (2-min) writer.
+- **logrotate keeps 52 weekly generations** (was 8 ≈ two months) for `/var/log/ccstats/*.log` and
+  the legacy `/var/log/claude-stats*.log`. `usage.log`, the chattiest, is well under 1 MB/week
+  compressed, so a year costs nothing. `deploy.sh` reinstalls the policy; older compressed
+  generations already deleted are gone, the new limit applies from the next rotation.
+
 ## 1.5.3 — 2026-09-08
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).

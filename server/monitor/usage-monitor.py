@@ -41,6 +41,13 @@ utilization & reset timestamps and flag `stale: true`. That is correct: a reset
 time is absolute, and utilization only moves while a session is active (= Claude
 Code running = a fresh token available), so a stale read never hides real change.
 
+History (--history-db, main only): every served reading is also appended to a
+`limit_readings` table in the ledger (ledger.db), so "when do I hit the session
+cap" style analyses are a SQL query instead of a log parse, and the readings
+share the ledger's backup/retention story. Consecutive identical STALE readings
+are collapsed to one row (a quiet night is one row, not 300). The write is
+best-effort: a DB hiccup is logged and never blocks the feed.
+
 Run as root (to read every user's 0600 credentials) every ~2 min from cron:
 
     */2 * * * * /usr/bin/python3 /opt/claude-stats/usage-monitor.py \
@@ -52,6 +59,7 @@ import glob
 import json
 import os
 import pwd
+import sqlite3
 import sys
 import urllib.error
 import urllib.request
@@ -388,6 +396,102 @@ def update_limit_hits(payload, state_path):
     return len(sess), len(wk)
 
 
+# --------------------------------------------------------------------------- #
+# Reading history (SQLite, in the ledger)
+# --------------------------------------------------------------------------- #
+# One row per poll run of the reading that was actually SERVED (after the cross-server merge, so
+# on main this is the authoritative account-wide number, whichever box took it). Percentages are
+# the API's utilization figures; resets_at are the API's absolute UTC timestamps. Consecutive
+# identical stale rows collapse (a stale run whose fields equal the previous stored row is skipped),
+# so the transition into/out of stale, and the reset-to-0% a held reading goes through, are kept
+# while an idle night doesn't add hundreds of duplicates.
+_HISTORY_COLS = ("ts", "server", "source", "stale", "error",
+                 "session_pct", "session_resets_at", "weekly_pct", "weekly_resets_at",
+                 "weekly_opus_pct", "weekly_opus_resets_at",
+                 "weekly_sonnet_pct", "weekly_sonnet_resets_at",
+                 "extra_enabled", "extra_used_credits", "extra_monthly_limit",
+                 "extra_utilization", "extra_currency",
+                 "session_limit_hits", "weekly_limit_hits")
+# the fields a stale row must differ in (from the previous row) to be worth storing
+_HISTORY_DEDUP_COLS = _HISTORY_COLS[3:]
+
+
+def history_row(payload, ts=None):
+    """Flatten a served payload into a limit_readings row (dict keyed by _HISTORY_COLS)."""
+    def b(k, f):
+        v = payload.get(k)
+        return v.get(f) if isinstance(v, dict) else None
+    eu = payload.get("extra_usage") or {}
+    return {
+        "ts": ts or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "server": payload.get("server"),
+        "source": payload.get("source"),
+        "stale": 1 if payload.get("stale") else 0,
+        "error": payload.get("error"),
+        "session_pct": b("session", "utilization"),
+        "session_resets_at": b("session", "resets_at"),
+        "weekly_pct": b("weekly", "utilization"),
+        "weekly_resets_at": b("weekly", "resets_at"),
+        "weekly_opus_pct": b("weekly_opus", "utilization"),
+        "weekly_opus_resets_at": b("weekly_opus", "resets_at"),
+        "weekly_sonnet_pct": b("weekly_sonnet", "utilization"),
+        "weekly_sonnet_resets_at": b("weekly_sonnet", "resets_at"),
+        "extra_enabled": (1 if eu.get("is_enabled") else 0) if eu else None,
+        "extra_used_credits": eu.get("used_credits") if eu else None,
+        "extra_monthly_limit": eu.get("monthly_limit") if eu else None,
+        "extra_utilization": eu.get("utilization") if eu else None,
+        "extra_currency": eu.get("currency") if eu else None,
+        "session_limit_hits": payload.get("session_limit_hits"),
+        "weekly_limit_hits": payload.get("weekly_limit_hits"),
+    }
+
+
+def open_history(path):
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA busy_timeout=5000")   # extract.py's full run may hold the ledger briefly
+    con.execute("""CREATE TABLE IF NOT EXISTS limit_readings(
+        id INTEGER PRIMARY KEY,
+        ts TEXT NOT NULL,                -- UTC, ISO-8601 seconds, when this row was served
+        server TEXT, source TEXT,        -- box that took the reading / Linux user whose token it used
+        stale INTEGER NOT NULL, error TEXT,
+        session_pct REAL, session_resets_at TEXT,
+        weekly_pct REAL, weekly_resets_at TEXT,
+        weekly_opus_pct REAL, weekly_opus_resets_at TEXT,
+        weekly_sonnet_pct REAL, weekly_sonnet_resets_at TEXT,
+        extra_enabled INTEGER, extra_used_credits REAL, extra_monthly_limit REAL,
+        extra_utilization REAL, extra_currency TEXT,
+        session_limit_hits INTEGER, weekly_limit_hits INTEGER)""")
+    con.execute("CREATE INDEX IF NOT EXISTS limit_readings_ts ON limit_readings(ts)")
+    con.commit()
+    return con
+
+
+def record_reading(con, row):
+    """Append `row` unless it is a stale repeat of the last stored row. Returns True if stored."""
+    if row["stale"]:
+        last = con.execute("SELECT %s FROM limit_readings ORDER BY id DESC LIMIT 1"
+                           % ",".join(_HISTORY_DEDUP_COLS)).fetchone()
+        if last is not None and tuple(row[c] for c in _HISTORY_DEDUP_COLS) == tuple(last):
+            return False
+    con.execute("INSERT INTO limit_readings(%s) VALUES(%s)"
+                % (",".join(_HISTORY_COLS), ",".join("?" * len(_HISTORY_COLS))),
+                tuple(row[c] for c in _HISTORY_COLS))
+    con.commit()
+    return True
+
+
+def save_history(path, payload):
+    """Best-effort: never let the history write break the feed."""
+    try:
+        con = open_history(path)
+        try:
+            record_reading(con, history_row(payload))
+        finally:
+            con.close()
+    except (sqlite3.Error, OSError) as e:
+        log(f"WARN history not recorded in {path}: {e}")
+
+
 def read_prev(path):
     try:
         with open(path) as fh:
@@ -426,6 +530,9 @@ def main():
                     help="REMOTES: don't chown output to www-data (it's a temp file we sftp up)")
     ap.add_argument("--no-limit-hits", action="store_true",
                     help="REMOTES: skip the >=67%% trophy bookkeeping (main recomputes it authoritatively)")
+    ap.add_argument("--history-db", default=None,
+                    help="MAIN: SQLite file (the ledger) to append each served reading to, table "
+                         "limit_readings — durable history for analyses; off when omitted")
     ap.add_argument("--pretty", action="store_true", help="pretty-print (debug)")
     args = ap.parse_args()
 
@@ -479,6 +586,8 @@ def main():
     if args.pretty:
         print(json.dumps(payload, indent=2))
     write_atomic(args.output, payload, chown_www=not args.no_chown)
+    if args.history_db:
+        save_history(args.history_db, payload)
     return 0
 
 

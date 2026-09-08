@@ -77,9 +77,15 @@ and aggregates the whole ledger:
 - **`record_owner` table** — pins each `requestId`/user-prompt `uuid` to the first session that
   banked it. A request/prompt copied into multiple transcripts (session *resume*) is counted once
   and **never re-counted by a surviving copy even after the owning session is deleted**.
-- The ledger is copied to `ledger.db.bak` at the start of each run — a single rolling copy for an
-  instant one-step undo (overwritten every run; not a history). The retained snapshots below are the
-  durable safety net.
+- **`limit_readings` table** *(optional, main only)* — written by `usage-monitor.py --history-db`,
+  not by `extract.py`: one row per served limits reading (UTC `ts`, `server`, `source`, `stale`,
+  session/weekly/opus/sonnet utilization + `resets_at`, extra-usage credits, limit-hit counts).
+  Consecutive identical stale rows are collapsed. It lives in the ledger so it shares the backup
+  story below; `extract.py` never reads it.
+- The ledger is copied to `ledger.db.bak` at the start of each run (via the SQLite online backup
+  API — the usage poller may be committing a `limit_readings` row at that moment) — a single rolling
+  copy for an instant one-step undo (overwritten every run; not a history). The retained snapshots
+  below are the durable safety net.
 - **Optional `--mode seed`** (idempotent): for usage pruned *before* the ledger existed, a fixed
   `archive` row per project can recover an observed peak (`peak − current`). Empty by default
   (`PRELEDGER_PEAK = {}`); the archived slice only carries totals (no per-day/heatmap detail).

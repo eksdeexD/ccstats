@@ -11,6 +11,9 @@
 # Replaces the pre-1.2.1 root cron for usage-monitor.py (every 2 min).
 # CAP_DAC_READ_SEARCH reads users' 0600 ~/.claude/.credentials.json (the poller
 # never refreshes tokens — that's Claude Code's job).
+# --history-db appends every served reading to the ledger's limit_readings table
+# (durable history; backed up with the ledger). Remotes don't pass it — main records
+# the merged, authoritative reading.
 
 [Unit]
 Description=ccstats — poll session/weekly limits and publish claude-limits.json
@@ -18,7 +21,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 @OPT@/usage-monitor.py --output @WEB@/claude-limits.json --merge-dir @WEB@/limits-remote
+ExecStart=/usr/bin/python3 @OPT@/usage-monitor.py --output @WEB@/claude-limits.json --merge-dir @WEB@/limits-remote --history-db @OPT@/ledger.db
 User=ccollector
 Group=ccollector
 UMask=0022
