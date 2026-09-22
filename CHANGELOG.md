@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.5.6 — 2026-09-22
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Bugfix: `claude-opus-5-5` added to `server/pipeline/pricing.json`** ($4/$20 per MTok, cache
+read **$0.20**, cache write $5.00 — verified against the official pricing page on release day).
+Without the entry, Opus 5.5 usage logged `WARN: model 'claude-opus-5-5' not in pricing table` and
+was costed at the Opus 4.7 fallback rates ($5/$25, cache read $0.50, cache write $6.25) — input,
+output and cache-write cost overstated by 25%, cache-read cost by 150%. Note the cache-read rate:
+Opus 5.5 prices cache hits at 0.05× input, not the usual 0.1× (like Fable 5.1's 0.025×, it breaks
+the common ratio).
+
+Cost is recomputed from the ledger's per-model token counts each run, so deploying this
+retroactively corrects all historical Opus 5.5 cost. Apply with the normal
+`git pull && ./server/deploy.sh` (as `slate`), then `./server/pipeline/provision-remote.sh
+--update all` so fragments get the updated table.
+
+Still open (tracked in `TODO.md`): 1-hour cache writes ($8.00 on Opus 5.5) are priced at the
+5-minute rate.
+
 ## 1.5.5 — 2026-09-08
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
