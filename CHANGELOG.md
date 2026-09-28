@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.5.7 — 2026-09-28
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Bugfix: `claude-sonnet-5-5` added to `server/pipeline/pricing.json`** ($2/$10 per MTok, cache
+read $0.20, cache write $2.50 — the same rates as Sonnet 5, verified against the official pricing
+page on release day). Without the entry, Sonnet 5.5 usage logged `WARN: model 'claude-sonnet-5-5'
+not in pricing table` and was costed at the Opus 4.7 fallback rates ($5/$25, cache read $0.50,
+cache write $6.25) — 2.5× too high on every token type.
+
+Cost is recomputed from the ledger's per-model token counts each run, so deploying this
+retroactively corrects any historical Sonnet 5.5 cost. Apply with the normal
+`git pull && ./server/deploy.sh` (as `slate`), then `./server/pipeline/provision-remote.sh
+--update all` so fragments get the updated table.
+
 ## 1.5.6 — 2026-09-22
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
