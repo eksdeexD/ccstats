@@ -98,6 +98,8 @@ def pending_tools(path):
                 o = json.loads(line)
             except Exception:
                 continue
+            if not isinstance(o, dict):
+                continue                       # valid JSON but not a record (torn write)
             t = o.get("type")
             if t == "assistant":
                 ids = []

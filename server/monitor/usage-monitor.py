@@ -130,7 +130,8 @@ def gather_tokens():
     for path in glob.glob(CRED_GLOB):
         try:
             with open(path) as fh:
-                oauth = (json.load(fh) or {}).get("claudeAiOauth") or {}
+                creds = json.load(fh)
+            oauth = (creds.get("claudeAiOauth") if isinstance(creds, dict) else None) or {}
             tok = oauth.get("accessToken")
             if not tok:
                 continue

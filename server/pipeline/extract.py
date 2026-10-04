@@ -299,7 +299,7 @@ def parse_session_records(files):
             warn("cannot open %s (%s)" % (f, e))
             continue
         with fh:
-            for line in fh:
+            for lineno, line in enumerate(fh, 1):
                 if len(line) > MAX_LINE_BYTES:
                     continue
                 line = line.strip()
@@ -308,6 +308,12 @@ def parse_session_records(files):
                 try:
                     r = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if not isinstance(r, dict):
+                    # Valid JSON but not a record (seen in the wild: a bare integer left by a torn
+                    # write on a crashing box). Skip it instead of aborting the whole run.
+                    warn("skipping non-object transcript line %s:%d (%s)"
+                         % (f, lineno, type(r).__name__))
                     continue
                 if cwd is None:
                     cwd = r.get("cwd") or None   # first cwd seen wins; used by 'directory' granularity

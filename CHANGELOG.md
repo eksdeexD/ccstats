@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.8 — 2026-10-05
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Bugfix: a transcript line that is valid JSON but not an object no longer aborts the run.**
+`parse_session_records` in `server/pipeline/extract.py` only caught `JSONDecodeError`, so a line
+holding a bare integer (seen in the wild: a `0` left mid-file by a torn write when a box crashed)
+raised `AttributeError: 'int' object has no attribute 'get'` and killed the whole extract. On a
+fragment node that meant `ccstats-fragment.service` failed every minute and nothing was uploaded,
+so the box's stats on the main server silently froze at the last good shipment — while the live
+shipper kept working, so nothing looked down. The parser now skips such lines and logs one
+`WARN: skipping non-object transcript line <file>:<line> (<type>)`.
+
+The same guard was added to the other transcript readers (`live-monitor.py`,
+`bottleneck-monitor.py`) and to the `~/.claude/.credentials.json` reader in `usage-monitor.py`,
+which made the same object assumption. Apply with the normal `git pull && ./server/deploy.sh`,
+then `./server/pipeline/provision-remote.sh --update all` so fragment nodes get the fixed
+`extract.py`; a stuck node ships again on its next timer tick.
+
 ## 1.5.7 — 2026-09-28
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).

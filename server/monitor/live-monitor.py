@@ -293,6 +293,8 @@ def tail_state(path):
                 o = json.loads(line)
             except Exception:
                 continue                       # skip corrupt/truncated lines
+            if not isinstance(o, dict):
+                continue                       # valid JSON but not a record (torn write)
             if o.get("isMeta") or o.get("isSidechain"):
                 continue                       # system/subagent noise — not the main turn boundary
             t = o.get("type")
