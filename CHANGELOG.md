@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.9 — 2026-10-07
+
+Server/pipeline-only patch — no firmware change (the version number moves in lockstep).
+
+**Bugfix: `claude-haiku-5-5` added to `server/pipeline/pricing.json`** ($0.10/$0.50 per MTok,
+cache read $0.01, cache write $0.125 — the rates for prompts up to 100k tokens, verified against
+the official pricing page on release day). Without the entry, Haiku 5.5 usage was costed at the
+Opus 4.7 fallback rates — roughly 50× too high.
+
+Known simplification: Haiku 5.5 is the first model priced by prompt length — a request whose prompt
+exceeds 100k tokens pays 5× ($0.50/$2.50, cache read $0.05, cache write $0.625). The pipeline
+banks per-model token totals, not per-request prompt sizes, so every Haiku 5.5 request is priced
+at the ≤100k rate; long-prompt requests are under-costed. A known follow-up.
+
+**Pricing change: `claude-sonnet-5-5` cache read lowered to $0.10** (from $0.20, i.e. 0.05×
+input), effective 2026-10-07 per Anthropic's announcement and the pricing page's prompt-caching
+section (the page's main model table still showed $0.20 on the day). The table holds one rate per
+model and cost is recomputed from the ledger each run, so the new rate applies to Sonnet 5.5's
+whole history: cache reads from 2026-09-28 to 2026-10-06 are now under-costed by half. That gap is
+fixed in size and shrinks as a share of the total over time — accepted as the simpler choice over
+date-windowed rates.
+
+Apply with the normal `git pull && ./server/deploy.sh` (as `slate`), then
+`./server/pipeline/provision-remote.sh --update all` so fragments get the updated table.
+
 ## 1.5.8 — 2026-10-05
 
 Server/pipeline-only patch — no firmware change (the version number moves in lockstep).

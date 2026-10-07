@@ -1,5 +1,5 @@
 {
-  "pricing_date": "2026-09-28",
+  "pricing_date": "2026-10-07",
   "models": {
     "claude-fable-5-1": {
       "input": 10.00,
@@ -46,7 +46,7 @@
     "claude-sonnet-5-5": {
       "input": 2.00,
       "output": 10.00,
-      "cache_read": 0.20,
+      "cache_read": 0.10,
       "cache_create": 2.50
     },
     "claude-sonnet-5": {
@@ -60,6 +60,12 @@
       "output": 15.00,
       "cache_read": 0.30,
       "cache_create": 3.75
+    },
+    "claude-haiku-5-5": {
+      "input": 0.10,
+      "output": 0.50,
+      "cache_read": 0.01,
+      "cache_create": 0.125
     },
     "claude-haiku-4-5-20251001": {
       "input": 1.00,
